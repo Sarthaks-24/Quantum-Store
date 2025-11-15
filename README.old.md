@@ -1,0 +1,232 @@
+# 🔮 QuantumStore
+
+**Local-First File Intelligence Engine • Zero ML Models • Pure Heuristics**
+
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## 🎯 Overview
+
+QuantumStore is an intelligent file analysis and organization engine that operates **entirely locally** using deterministic heuristics, statistical techniques, and rule-based systems. 
+
+**NO pretrained ML models. NO cloud inference. NO external APIs.**
+
+### What It Does
+
+- **JSON Analysis**: Schema inference, type detection, inconsistency detection, outlier analysis
+- **Text Analysis**: TF-IDF vectors, similarity scoring, readability metrics, tokenization  
+- **Image Analysis**: Perceptual hashing, color analysis, heuristic categorization
+- **Auto-Grouping**: Intelligent file organization based on content and metadata
+- **Reasoning Logs**: Transparent explanations for every decision
+
+### What It Doesn't Use
+
+❌ No pretrained models (CLIP, YOLO, transformers, etc.)  
+❌ No deep learning frameworks (TensorFlow, PyTorch)  
+❌ No cloud APIs or external ML services  
+❌ No ONNX models or embeddings  
+
+✅ Pure heuristics, statistics, TF-IDF, KMeans, perceptual hashing  
+✅ 100% local processing  
+✅ Transparent reasoning  
+
+---
+
+## 🏗️ Architecture
+
+```
+quantumstore/
+├── backend/
+│   ├── app.py                    # FastAPI application
+│   ├── processors/
+│   │   ├── json_processor.py     # JSON schema inference
+│   │   ├── text_processor.py     # Text analysis with TF-IDF
+│   │   ├── image_processor.py    # Image heuristics & pHash
+│   │   └── video_processor.py    # Placeholder for video
+│   ├── rules/
+│   │   ├── rules.py              # Grouping & matching rules
+│   │   └── heuristics.py         # Pure heuristic functions
+│   ├── utils/
+│   │   ├── file_utils.py         # File handling utilities
+│   │   ├── metrics.py            # Similarity metrics
+│   │   └── serializers.py        # JSON serialization
+│   └── storage/
+│       └── store.py              # Local storage manager
+├── frontend/
+│   ├── index.html                # Main UI
+│   ├── js/
+│   │   ├── api.js                # API client
+│   │   ├── uploader.js           # Upload logic
+│   │   └── results.js            # Visualization
+│   └── css/
+│       └── styles.css            # Styles
+├── data/
+│   ├── raw/uploads/              # Uploaded files
+│   ├── processed/metadata/       # File metadata
+│   ├── processed/schemas/        # Inferred schemas
+│   └── cache/                    # Indices (pHash, TF-IDF)
+└── requirements.txt
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Start Backend
+
+```bash
+cd backend
+python app.py
+```
+
+The API will be available at `http://localhost:8000`
+
+### 3. Open Frontend
+
+Open `frontend/index.html` in your browser, or serve it:
+
+```bash
+cd frontend
+python -m http.server 3000
+```
+
+Visit `http://localhost:3000`
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/upload` | Upload a file |
+| `POST` | `/analyze/json?file_id=<id>` | Analyze JSON file |
+| `POST` | `/analyze/text?file_id=<id>` | Analyze text file |
+| `POST` | `/analyze/image?file_id=<id>` | Analyze image file |
+| `GET` | `/file/{id}` | Get file metadata & analysis |
+| `GET` | `/files` | List all files |
+| `POST` | `/groups/auto` | Auto-group files |
+| `GET` | `/schemas` | Get all inferred schemas |
+| `GET` | `/health` | Health check |
+
+---
+
+## 🧠 Core Features
+
+### JSON Processor
+
+- **Schema Inference**: Automatically infer unified schemas from JSON arrays
+- **Type Detection**: Detect int, float, bool, string, date, null, array, object
+- **Key Normalization**: Convert keys to lowercase snake_case
+- **Inconsistency Detection**: Find mixed types, missing fields, synonym keys
+- **Outlier Detection**: Use IQR to detect statistical outliers
+- **Confidence Scoring**: Provide confidence scores for each field type
+
+### Text Processor
+
+- **Tokenization**: Extract meaningful tokens with stopword filtering
+- **TF-IDF**: Build TF-IDF vectors from local corpus
+- **Similarity**: Cosine, Jaccard, Levenshtein distance
+- **Readability**: Calculate Flesch reading ease score
+- **Top Terms**: Extract most important terms
+
+### Image Processor
+
+- **Perceptual Hashing**: Generate pHash for similarity detection
+- **Color Analysis**: Extract dominant colors using KMeans
+- **Quality Metrics**: Calculate brightness, sharpness, edge density
+- **Heuristic Categorization**:
+  - **Logos**: Transparent PNG + low color variance
+  - **Screenshots**: High sharpness + high edge density
+  - **Photos**: EXIF data + high color variance
+  - **Graphics**: Everything else
+
+### Rule Engine
+
+- **Auto-Grouping**: Group similar files by content
+- **Schema Matching**: Compare and merge schemas
+- **Conflict Resolution**: Resolve type conflicts deterministically
+- **Similarity Detection**: Find duplicate or near-duplicate files
+
+---
+
+## 🔒 Privacy & Security
+
+- **100% Local**: All processing happens on your machine
+- **No Cloud**: No data sent to external services
+- **No Tracking**: No analytics or telemetry
+- **Transparent**: Full reasoning logs for every decision
+
+---
+
+## 🛠️ Technology Stack
+
+**Backend:**
+- FastAPI (async web framework)
+- scikit-learn (TF-IDF & KMeans only, not pretrained)
+- Pillow (image processing)
+- imagehash (perceptual hashing)
+- OpenCV (image analysis)
+- NumPy (numerical operations)
+
+**Frontend:**
+- Vanilla JavaScript
+- Modern CSS (Grid, Flexbox)
+- Fetch API
+
+**Storage:**
+- Local filesystem
+- JSON files
+- No database required
+
+---
+
+## 📊 Example Usage
+
+### Upload and Analyze JSON
+
+```bash
+curl -X POST http://localhost:8000/upload \
+  -F "file=@data.json"
+
+curl -X POST http://localhost:8000/analyze/json?file_id=<file_id>
+```
+
+### Auto-Group Files
+
+```bash
+curl -X POST http://localhost:8000/groups/auto
+```
+
+---
+
+## 🎯 Design Principles
+
+1. **Local-First**: Everything runs on your machine
+2. **Transparent**: Every decision is logged and explainable
+3. **Deterministic**: Same input → same output
+4. **No Black Boxes**: Pure heuristics and statistics
+5. **Fast**: No model inference delays
+6. **Privacy**: Your data never leaves your machine
+
+---
+
+## 📝 Development
+
+See [TASKS.md](TASKS.md) for development roadmap and [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) for implementation details.
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+Built with ❤️ using pure heuristics and deterministic algorithms
