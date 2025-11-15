@@ -35,6 +35,35 @@ class QuantumStoreAPI {
         return await response.json();
     }
 
+    async uploadBatch(files, folderId) {
+        const formData = new FormData();
+        formData.append('folder_id', folderId);
+        
+        // Validate that we're sending actual File objects
+        for (const file of files) {
+            if (!(file instanceof File)) {
+                console.error('Invalid file object:', file, 'Type:', typeof file);
+                throw new Error(`Expected File object, got ${typeof file}`);
+            }
+            console.log('Adding file to upload:', file.name, 'Size:', file.size, 'Type:', file.type);
+            formData.append('files', file);
+        }
+
+        console.log(`Uploading ${files.length} files to folder ${folderId}`);
+
+        const response = await fetch(`${API_BASE_URL}/upload/batch`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Multi-file upload failed: ${response.statusText} - ${errorText}`);
+        }
+
+        return await response.json();
+    }
+
     async analyzeJSON(fileId) {
         const response = await fetch(`${API_BASE_URL}/analyze/json?file_id=${fileId}`, {
             method: 'POST'

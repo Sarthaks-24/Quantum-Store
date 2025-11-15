@@ -1,7 +1,7 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from typing import List, Optional
+from typing import List, Optional, Dict
 import os
 import uuid
 from datetime import datetime
@@ -13,11 +13,45 @@ from processors.text_processor import TextProcessor
 from processors.image_processor import ImageProcessor
 from rules.rules import RuleEngine
 from storage.store import LocalStore
-from utils.file_utils import get_file_type, save_uploaded_file
+from utils.file_utils import get_file_type, save_uploaded_file, save_upload_file, clean_filename
 from utils.serializers import sanitize_for_json
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+
+# Maximum request body size: 1GB
+MAX_UPLOAD_SIZE = 1 * 1024 * 1024 * 1024  # 1GB in bytes (1,073,741,824)
+MAX_UPLOAD_SIZE_MB = MAX_UPLOAD_SIZE / (1024 * 1024)
+
+class LimitUploadSize(BaseHTTPMiddleware):
+    """Middleware to enforce 1GB upload size limit on all POST requests."""
+    
+    async def dispatch(self, request: Request, call_next):
+        if request.method == 'POST':
+            content_length = request.headers.get('content-length')
+            if content_length:
+                size_bytes = int(content_length)
+                if size_bytes > MAX_UPLOAD_SIZE:
+                    size_mb = size_bytes / (1024 * 1024)
+                    print(f"[UPLOAD_LIMIT] Rejecting request: size = {size_bytes:,} bytes ({size_mb:.2f} MB)")
+                    print(f"[UPLOAD_LIMIT] Maximum allowed: {MAX_UPLOAD_SIZE:,} bytes ({MAX_UPLOAD_SIZE_MB:.0f} MB)")
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "error": "Upload exceeds 1GB limit",
+                            "max_size_bytes": MAX_UPLOAD_SIZE,
+                            "max_size_mb": MAX_UPLOAD_SIZE_MB,
+                            "received_size_bytes": size_bytes,
+                            "received_size_mb": size_mb
+                        }
+                    )
+        return await call_next(request)
 
 app = FastAPI(title="QuantumStore", description="Local-First File Intelligence Engine")
 
+# Add request body size limit middleware
+app.add_middleware(LimitUploadSize)
+
+# Add request body size limit (500MB max)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,15 +74,34 @@ async def health_check():
 async def upload_file(file: UploadFile = File(...)):
     try:
         file_id = str(uuid.uuid4())
-        file_type = get_file_type(file.filename)
+        filename = file.filename  # Store filename before reading
+        file_type = get_file_type(filename)
         
-        file_path = save_uploaded_file(file, file_id)
+        # Save file and immediately check size (safeguard for missing Content-Length)
+        file_path = await save_upload_file(file, file_id)
+        file_size = os.path.getsize(file_path)
+        
+        # Secondary size check after file is written
+        if file_size > MAX_UPLOAD_SIZE:
+            os.remove(file_path)  # Delete oversized file
+            size_mb = file_size / (1024 * 1024)
+            print(f"[UPLOAD_LIMIT] Rejecting file after upload: {filename} = {file_size:,} bytes ({size_mb:.2f} MB)")
+            raise HTTPException(
+                status_code=413,
+                detail={
+                    "error": "Upload exceeds 1GB limit",
+                    "filename": filename,
+                    "size_bytes": file_size,
+                    "size_mb": size_mb,
+                    "max_size_mb": MAX_UPLOAD_SIZE_MB
+                }
+            )
         
         metadata = {
             "id": file_id,
-            "filename": file.filename,
+            "filename": filename,
             "file_type": file_type,
-            "size": os.path.getsize(file_path),
+            "size": file_size,
             "uploaded_at": datetime.utcnow().isoformat(),
             "path": file_path
         }
@@ -57,7 +110,7 @@ async def upload_file(file: UploadFile = File(...)):
         
         return JSONResponse(content={
             "file_id": file_id,
-            "filename": file.filename,
+            "filename": filename,
             "file_type": file_type,
             "message": "File uploaded successfully"
         })
@@ -72,17 +125,32 @@ async def upload_folder(files: List[UploadFile] = File(...)):
         uploaded_at = datetime.utcnow().isoformat()
         
         for file in files:
+            filename = None
             try:
                 file_id = str(uuid.uuid4())
-                file_type = get_file_type(file.filename)
+                filename = file.filename  # Store filename before reading
+                file_type = get_file_type(filename)
                 
-                file_path = save_uploaded_file(file, file_id)
+                file_path = await save_upload_file(file, file_id)
+                file_size = os.path.getsize(file_path)
+                
+                # Check individual file size (safeguard)
+                if file_size > MAX_UPLOAD_SIZE:
+                    os.remove(file_path)
+                    size_mb = file_size / (1024 * 1024)
+                    print(f"[UPLOAD_LIMIT] Rejecting file in folder upload: {filename} = {file_size:,} bytes ({size_mb:.2f} MB)")
+                    results.append({
+                        "filename": filename,
+                        "error": f"File exceeds 1GB limit ({size_mb:.2f} MB)",
+                        "status": "failed"
+                    })
+                    continue
                 
                 metadata = {
                     "id": file_id,
-                    "filename": file.filename,
+                    "filename": filename,
                     "file_type": file_type,
-                    "size": os.path.getsize(file_path),
+                    "size": file_size,
                     "uploaded_at": uploaded_at,
                     "path": file_path,
                     "folder_id": folder_id
@@ -107,12 +175,12 @@ async def upload_folder(files: List[UploadFile] = File(...)):
                         store.save_analysis(file_id, "image", analysis)
                         store.update_phash_index(file_id, analysis.get("phash"))
                 except Exception as analysis_error:
-                    print(f"Analysis failed for {file.filename}: {str(analysis_error)}")
+                    print(f"Analysis failed for {filename}: {str(analysis_error)}")
                     analysis = {"error": str(analysis_error)}
                 
                 results.append({
                     "file_id": file_id,
-                    "filename": file.filename,
+                    "filename": filename,
                     "file_type": file_type,
                     "size": metadata["size"],
                     "analyzed": analysis is not None and "error" not in analysis,
@@ -122,8 +190,9 @@ async def upload_folder(files: List[UploadFile] = File(...)):
                     } if analysis else None
                 })
             except Exception as file_error:
+                error_filename = filename if filename else "<unknown>"
                 results.append({
-                    "filename": file.filename,
+                    "filename": error_filename,
                     "error": str(file_error),
                     "status": "failed"
                 })
@@ -137,6 +206,105 @@ async def upload_folder(files: List[UploadFile] = File(...)):
             "message": f"Processed {len(files)} files from folder"
         })
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload/batch")
+async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = Form(None)):
+    """
+    Upload multiple files (up to 50 at a time).
+    All files are saved to data/raw/uploads/ with the same folder_id prefix.
+    """
+    try:
+        # Generate folder_id if not provided
+        if not folder_id:
+            folder_id = f"upload_{uuid.uuid4().hex[:8]}"
+        
+        uploaded_at = datetime.utcnow().isoformat()
+        results = []
+        
+        print(f"\n{'='*70}")
+        print(f"[UPLOAD] Starting multi-file upload ({len(files)} files)")
+        print(f"[UPLOAD] Folder ID: {folder_id}")
+        print(f"{'='*70}\n")
+        
+        for file in files:
+            # Store filename BEFORE reading to avoid losing UploadFile reference
+            filename = None
+            try:
+                # Extract filename while file is still UploadFile
+                filename = file.filename
+                
+                print(f"[UPLOAD] → Uploading {filename}...")
+                
+                # Read file content
+                file_content = await file.read()
+                file_size = len(file_content)
+                
+                if file_size > MAX_UPLOAD_SIZE:
+                    size_mb = file_size / (1024 * 1024)
+                    print(f"[UPLOAD] → {filename} rejected: {size_mb:.2f} MB exceeds limit")
+                    results.append({
+                        "filename": filename,
+                        "error": f"File exceeds {MAX_UPLOAD_SIZE_MB:.0f}MB limit ({size_mb:.2f}MB)",
+                        "status": "rejected"
+                    })
+                    continue
+                
+                # Save file with bytes content (filename will be sanitized inside save_uploaded_file)
+                file_id = str(uuid.uuid4())
+                file_path = save_uploaded_file(file_content, filename, folder_id)
+                
+                # Get file type
+                file_type = get_file_type(file_path)
+                
+                # Save metadata (consistent with single file and folder upload)
+                metadata = {
+                    "id": file_id,
+                    "filename": filename,
+                    "file_type": file_type,
+                    "path": file_path,
+                    "size": file_size,
+                    "uploaded_at": uploaded_at,
+                    "folder_id": folder_id
+                }
+                store.save_metadata(file_id, metadata)
+                print(f"[UPLOAD] → {filename} uploaded (ID: {file_id[:8]}...) ... OK")
+                
+                results.append({
+                    "file_id": file_id,
+                    "filename": filename,
+                    "file_type": file_type,
+                    "size": file_size,
+                    "analyzed": False  # Analysis will be done separately via /analyze endpoints
+                })
+                
+            except Exception as file_error:
+                # Use stored filename or fallback
+                error_filename = filename if filename else "<unknown>"
+                print(f"[UPLOAD] → {error_filename} failed: {str(file_error)}")
+                traceback.print_exc()
+                results.append({
+                    "filename": error_filename,
+                    "error": str(file_error),
+                    "status": "failed"
+                })
+        
+        successful = len([r for r in results if "error" not in r and r.get("status") != "rejected"])
+        failed = len([r for r in results if "error" in r or r.get("status") == "rejected"])
+        
+        print(f"[UPLOAD] Completed ({successful}/{len(files)} files)\n")
+        
+        return JSONResponse(content={
+            "folder_id": folder_id,
+            "total_files": len(files),
+            "successful": successful,
+            "failed": failed,
+            "results": results,
+            "message": f"Upload complete: {successful}/{len(files)} files"
+        })
+        
+    except Exception as e:
+        print(f"[UPLOAD] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze/json")
