@@ -1,5 +1,6 @@
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('fileInput');
+const folderInput = document.getElementById('folderInput');
 
 dropZone.addEventListener('click', () => {
     fileInput.click();
@@ -25,6 +26,11 @@ dropZone.addEventListener('drop', async (e) => {
 fileInput.addEventListener('change', async (e) => {
     const files = Array.from(e.target.files);
     await handleFiles(files);
+});
+
+folderInput.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files);
+    await handleFolderUpload(files);
 });
 
 async function handleFiles(files) {
@@ -69,6 +75,84 @@ async function handleFiles(files) {
     }
     
     await loadFiles();
+}
+
+async function handleFolderUpload(files) {
+    addLog('System', `Processing folder with ${files.length} file(s)...`);
+    
+    try {
+        addLog('Upload', `Uploading ${files.length} files from folder...`);
+        
+        const result = await api.uploadFolder(files);
+        
+        addLog('Success', `Uploaded ${result.successful} file(s) successfully`);
+        
+        if (result.failed > 0) {
+            addLog('Warning', `Failed to upload ${result.failed} file(s)`);
+        }
+        
+        // Display summary
+        const successfulFiles = result.results.filter(r => !r.error);
+        const analyzedFiles = successfulFiles.filter(r => r.analyzed);
+        
+        addLog('Summary', `Total: ${result.total_files} | Successful: ${result.successful} | Failed: ${result.failed}`);
+        addLog('Summary', `Auto-analyzed: ${analyzedFiles.length} file(s)`);
+        
+        // Display detailed results
+        result.results.forEach((fileResult, index) => {
+            if (fileResult.error) {
+                addLog('Error', `${fileResult.filename}: ${fileResult.error}`);
+            } else {
+                const status = fileResult.analyzed ? '✓ Analyzed' : '○ Uploaded';
+                addLog('File', `${status} - ${fileResult.filename} (${fileResult.file_type}, ${(fileResult.size / 1024).toFixed(2)} KB)`);
+            }
+        });
+        
+        // Display folder summary card
+        displayFolderSummary(result);
+        
+        addLog('Complete', `Folder upload complete!`);
+        
+    } catch (error) {
+        addLog('Error', `Failed to upload folder: ${error.message}`);
+        console.error(error);
+    }
+    
+    await loadFiles();
+}
+
+function displayFolderSummary(result) {
+    const filesList = document.getElementById('filesList');
+    
+    const summaryCard = document.createElement('div');
+    summaryCard.className = 'file-item';
+    summaryCard.style.background = 'linear-gradient(135deg, #667eea22 0%, #764ba222 100%)';
+    summaryCard.style.borderLeft = '4px solid #764ba2';
+    
+    const typeBreakdown = {};
+    result.results.forEach(r => {
+        if (!r.error) {
+            typeBreakdown[r.file_type] = (typeBreakdown[r.file_type] || 0) + 1;
+        }
+    });
+    
+    const typesList = Object.entries(typeBreakdown)
+        .map(([type, count]) => `${type}: ${count}`)
+        .join(' | ');
+    
+    summaryCard.innerHTML = `
+        <div class="file-info">
+            <div class="file-name">📂 Folder Upload Summary (ID: ${result.folder_id.substring(0, 8)}...)</div>
+            <div class="file-meta">
+                Total Files: ${result.total_files} | 
+                Successful: ${result.successful} | 
+                Failed: ${result.failed} | 
+                Types: ${typesList}
+            </div>
+        </div>
+    `;
+    
+    filesList.insertBefore(summaryCard, filesList.firstChild);
 }
 
 function addLog(type, message) {

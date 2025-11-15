@@ -17,6 +17,24 @@ class QuantumStoreAPI {
         return await response.json();
     }
 
+    async uploadFolder(files) {
+        const formData = new FormData();
+        for (const file of files) {
+            formData.append('files', file);
+        }
+
+        const response = await fetch(`${API_BASE_URL}/upload/folder`, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`Folder upload failed: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
     async analyzeJSON(fileId) {
         const response = await fetch(`${API_BASE_URL}/analyze/json?file_id=${fileId}`, {
             method: 'POST'

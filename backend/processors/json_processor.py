@@ -31,17 +31,26 @@ class JSONProcessor:
         if file_size is None:
             file_size = os.path.getsize(file_path)
         
+        print(f"[JSON_PROCESSOR] Starting analysis: {file_path}")
+        print(f"[JSON_PROCESSOR] File size: {file_size:,} bytes")
+        
         self.log_reasoning(f"Starting JSON analysis (file size: {file_size} bytes)")
         
         # Use streaming for large files
         use_streaming = file_size > self.LARGE_FILE_THRESHOLD
+        print(f"[JSON_PROCESSOR] Use streaming: {use_streaming} (threshold: {self.LARGE_FILE_THRESHOLD:,} bytes)")
+        print(f"[JSON_PROCESSOR] ijson available: {IJSON_AVAILABLE}")
         
         if use_streaming and IJSON_AVAILABLE:
             self.log_reasoning("Using streaming parser for large file")
+            print("[JSON_PROCESSOR] Using streaming parser")
             return self._analyze_streaming(file_path, file_size)
         else:
             if use_streaming and not IJSON_AVAILABLE:
                 self.log_reasoning("Warning: Large file but ijson not available, attempting regular parse")
+                print("[JSON_PROCESSOR] Warning: ijson not available, using regular parser")
+            else:
+                print("[JSON_PROCESSOR] Using regular parser (file below threshold)")
             return self._analyze_regular(file_path)
     
     def _analyze_streaming(self, file_path: str, file_size: int) -> Dict[str, Any]:

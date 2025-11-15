@@ -48,7 +48,7 @@ def safe_serialize(obj: Any) -> Any:
     else:
         return str(obj)
 
-def sanitize_for_json(data: Any) -> Any:
+def sanitize_for_json(data: Any, _debug: bool = False, _path: str = "root") -> Any:
     """
     Universal sanitizer that converts all non-JSON-serializable types.
     
@@ -64,24 +64,32 @@ def sanitize_for_json(data: Any) -> Any:
         # Handle these first since bool is a subclass of int
         return data
     elif isinstance(data, Decimal):
+        if _debug:
+            print(f"[SANITIZER] {_path}: Decimal({data}) -> float({float(data)})")
         return float(data)
     elif isinstance(data, (int, float)):
         # Regular Python int/float
         return data
     elif isinstance(data, np.integer):
+        if _debug:
+            print(f"[SANITIZER] {_path}: np.{type(data).__name__}({data}) -> int({int(data)})")
         return int(data)
     elif isinstance(data, np.floating):
+        if _debug:
+            print(f"[SANITIZER] {_path}: np.{type(data).__name__}({data}) -> float({float(data)})")
         return float(data)
     elif isinstance(data, np.ndarray):
-        return [sanitize_for_json(item) for item in data.tolist()]
+        if _debug:
+            print(f"[SANITIZER] {_path}: Converting numpy array")
+        return [sanitize_for_json(item, _debug, f"{_path}[{i}]") for i, item in enumerate(data.tolist())]
     elif isinstance(data, (datetime, date)):
         return data.isoformat()
     elif isinstance(data, dict):
-        return {key: sanitize_for_json(value) for key, value in data.items()}
+        return {key: sanitize_for_json(value, _debug, f"{_path}.{key}") for key, value in data.items()}
     elif isinstance(data, (list, tuple)):
-        return [sanitize_for_json(item) for item in data]
+        return [sanitize_for_json(item, _debug, f"{_path}[{i}]") for i, item in enumerate(data)]
     elif isinstance(data, set):
-        return [sanitize_for_json(item) for item in sorted(data)]
+        return [sanitize_for_json(item, _debug, f"{_path}.set[{i}]") for i, item in enumerate(sorted(data))]
     elif isinstance(data, bytes):
         try:
             return data.decode('utf-8')
@@ -89,4 +97,7 @@ def sanitize_for_json(data: Any) -> Any:
             return str(data)
     else:
         # Fallback for unknown types
+        if _debug:
+            print(f"[SANITIZER] {_path}: Unknown type {type(data).__name__} -> str")
         return str(data)
+
