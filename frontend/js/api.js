@@ -112,6 +112,18 @@ class QuantumStoreAPI {
         return await response.json();
     }
 
+    async analyzeVideo(fileId) {
+        const response = await fetch(`${API_BASE_URL}/analyze/video?file_id=${fileId}`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Analysis failed: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
     async getFile(fileId) {
         const response = await fetch(`${API_BASE_URL}/file/${fileId}`);
 
@@ -175,6 +187,38 @@ class QuantumStoreAPI {
 
     getFileDownloadUrl(fileId) {
         return `${API_BASE_URL}/file/${fileId}/download`;
+    }
+
+    async getAllGroups() {
+        const response = await fetch(`${API_BASE_URL}/groups`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch groups: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
+    async getGroup(category) {
+        const response = await fetch(`${API_BASE_URL}/groups/${encodeURIComponent(category)}`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch group: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
+    async rebuildGroups() {
+        const response = await fetch(`${API_BASE_URL}/groups/rebuild`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to rebuild groups: ${response.statusText}`);
+        }
+
+        return await response.json();
     }
 }
 

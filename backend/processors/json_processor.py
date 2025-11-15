@@ -129,6 +129,14 @@ class JSONProcessor:
             # Detect inconsistencies from samples
             inconsistencies = self._detect_inconsistencies_from_samples(samples, schema)
             
+            # Categorize content - provide analysis for unified classifier
+            classification_analysis = self._build_classification_analysis(
+                data=samples,  # Use samples instead of full data
+                schema=schema,
+                record_count=record_count,
+                is_large_file=True
+            )
+            
             result = {
                 "record_count": record_count,
                 "sampled_count": len(samples),
@@ -137,7 +145,9 @@ class JSONProcessor:
                 "inconsistencies": inconsistencies,
                 "statistics": statistics_data,
                 "is_large_file": True,
-                "reasoning_log": self.reasoning_log
+                "reasoning_log": self.reasoning_log,
+                # Classification analysis for unified classifier
+                **classification_analysis
             }
             
             return result
@@ -185,7 +195,8 @@ class JSONProcessor:
                 "samples": [],
                 "inconsistencies": [],
                 "statistics": {},
-                "reasoning_log": self.reasoning_log
+                "reasoning_log": self.reasoning_log,
+                "content_category": "json_array_of_scalars"
             }
         
         # Build schema from ALL data
@@ -200,6 +211,14 @@ class JSONProcessor:
         # Detect inconsistencies from samples
         inconsistencies = self._detect_inconsistencies_from_samples(samples, schema)
         
+        # NEW: Build classification analysis
+        classification_analysis = self._build_classification_analysis(
+            data=data,
+            schema=schema,
+            record_count=len(data),
+            is_large_file=False
+        )
+        
         return {
             "record_count": len(data),
             "sampled_count": len(samples),
@@ -208,7 +227,8 @@ class JSONProcessor:
             "inconsistencies": inconsistencies,
             "statistics": statistics_data,
             "is_large_file": False,
-            "reasoning_log": self.reasoning_log
+            "reasoning_log": self.reasoning_log,
+            **classification_analysis
         }
     
     def _analyze_object(self, data: Dict) -> Dict[str, Any]:
@@ -226,13 +246,22 @@ class JSONProcessor:
         # Store simplified version of object
         simplified_data = self._simplify_record(data)
         
+        # NEW: Build classification analysis
+        classification_analysis = self._build_classification_analysis(
+            data=data,
+            schema=schema,
+            record_count=1,
+            is_large_file=False
+        )
+        
         return {
             "record_count": 1,
             "schema": schema,
             "sample": simplified_data,
             "inconsistencies": [],
             "statistics": {},
-            "reasoning_log": self.reasoning_log
+            "reasoning_log": self.reasoning_log,
+            **classification_analysis
         }
     
     def _simplify_record(self, record: Dict, max_depth: int = 2, current_depth: int = 0) -> Dict:
@@ -552,3 +581,219 @@ class JSONProcessor:
         """Add reasoning log entry."""
         timestamp = datetime.utcnow().isoformat()
         self.reasoning_log.append(f"[{timestamp}] {message}")
+    
+    def _build_classification_analysis(
+        self,
+        data: Any,
+        schema: Dict[str, Any],
+        record_count: int,
+        is_large_file: bool
+    ) -> Dict[str, Any]:
+        """
+        Build analysis data for unified classifier.
+        
+        Returns dict with:
+        - shape: JSON structure shape
+        - field_consistency: 0-1 ratio
+        - max_depth: nesting depth
+        - nested_ratio: ratio of nested fields
+        - parse_error: bool
+        """
+        # Detect shape
+        shape = self._detect_json_shape(data)
+        
+        # Calculate metrics for classifier
+        if shape == "array_of_objects":
+            field_consistency = self._calculate_field_consistency(schema, record_count)
+            max_depth = self._calculate_max_nesting_depth(data)
+            nested_ratio = self._calculate_nested_ratio(schema)
+        elif shape == "single_object":
+            field_consistency = 1.0
+            max_depth = self._calculate_max_nesting_depth(data)
+            nested_ratio = self._calculate_nested_ratio(schema)
+        else:
+            field_consistency = 1.0
+            max_depth = 0
+            nested_ratio = 0.0
+        
+        return {
+            "shape": shape,
+            "field_consistency": field_consistency,
+            "max_depth": max_depth,
+            "nested_ratio": nested_ratio,
+            "parse_error": False,
+        }
+    
+    def _detect_json_shape(self, data: Any) -> str:
+        """
+        Detect the shape/structure of JSON data.
+        
+        Returns:
+            One of: scalar, array_of_scalars, array_of_objects, 
+                    array_mixed, single_object, nested_object
+        """
+        if data is None or isinstance(data, (str, int, float, bool)):
+            return "scalar"
+        
+        if isinstance(data, dict):
+            return "single_object"
+        
+        if isinstance(data, list):
+            if not data:
+                return "array_of_scalars"  # Empty array
+            
+            # Check first few items to determine array type
+            sample_size = min(len(data), 10)
+            sample = data[:sample_size]
+            
+            # Check if all are scalars
+            if all(isinstance(item, (str, int, float, bool, type(None))) for item in sample):
+                return "array_of_scalars"
+            
+            # Check if all are objects
+            if all(isinstance(item, dict) for item in sample):
+                return "array_of_objects"
+            
+            # Mixed types
+            return "array_mixed"
+        
+        return "unknown"
+    
+    def _calculate_field_consistency(self, schema: Dict[str, Any], total_records: int) -> float:
+        """
+        Calculate field consistency ratio.
+        
+        Returns:
+            Float between 0 and 1 representing consistency
+        """
+        if not schema or total_records == 0:
+            return 0.0
+        
+        # Calculate average presence across all fields
+        total_presence = 0.0
+        field_count = 0
+        
+        for field_name, field_info in schema.items():
+            presence = field_info.get("presence", 0.0)
+            total_presence += presence
+            field_count += 1
+        
+        if field_count == 0:
+            return 0.0
+        
+        avg_presence = total_presence / field_count
+        return avg_presence
+    
+    def _calculate_max_nesting_depth(self, data: Any, current_depth: int = 0) -> int:
+        """
+        Calculate maximum nesting depth in JSON structure.
+        
+        Args:
+            data: JSON data to analyze
+            current_depth: Current recursion depth
+        
+        Returns:
+            Maximum depth found
+        """
+        if isinstance(data, dict):
+            if not data:
+                return current_depth
+            max_child_depth = max(
+                (self._calculate_max_nesting_depth(v, current_depth + 1) for v in data.values()),
+                default=current_depth
+            )
+            return max_child_depth
+        elif isinstance(data, list):
+            if not data:
+                return current_depth
+            # Sample first few items
+            sample = data[:5]
+            max_child_depth = max(
+                (self._calculate_max_nesting_depth(item, current_depth + 1) for item in sample),
+                default=current_depth
+            )
+            return max_child_depth
+        else:
+            return current_depth
+    
+    def _calculate_nested_ratio(self, schema: Dict[str, Any]) -> float:
+        """
+        Calculate ratio of nested fields to total fields.
+        
+        Returns:
+            Float between 0 and 1
+        """
+        if not schema:
+            return 0.0
+        
+        nested_count = 0
+        total_count = 0
+        
+        for field_name, field_info in schema.items():
+            field_type = field_info.get("type", "unknown")
+            total_count += 1
+            
+            if field_type in ["object", "array"]:
+                nested_count += 1
+        
+        if total_count == 0:
+            return 0.0
+        
+        return nested_count / total_count
+    
+    def _has_nested_structures(self, schema: Dict[str, Any]) -> bool:
+        """Check if schema contains any nested structures."""
+        for field_name, field_info in schema.items():
+            field_type = field_info.get("type", "unknown")
+            if field_type in ["object", "array"]:
+                return True
+        return False
+    
+    def _has_deep_nesting(self, data: Any, max_depth: int = 3, current_depth: int = 0) -> bool:
+        """Check if data has nesting deeper than max_depth."""
+        if current_depth >= max_depth:
+            return True
+        
+        if isinstance(data, dict):
+            return any(
+                self._has_deep_nesting(v, max_depth, current_depth + 1) 
+                for v in data.values()
+            )
+        elif isinstance(data, list):
+            # Sample first few items
+            sample = data[:3] if len(data) > 3 else data
+            return any(
+                self._has_deep_nesting(item, max_depth, current_depth + 1) 
+                for item in sample
+            )
+        
+        return False
+    
+    def _is_sql_suitable(
+        self,
+        schema: Dict[str, Any],
+        consistency: float,
+        max_depth: int,
+        nested_ratio: float
+    ) -> bool:
+        """
+        Determine if JSON is suitable for SQL storage.
+        
+        SQL suitable if:
+        - Consistency >= 60%
+        - Max depth <= 2 (shallow nesting)
+        - Nested ratio < 0.3 (mostly flat)
+        
+        Returns:
+            True if SQL suitable, False otherwise
+        """
+        if consistency < 0.60:
+            return False
+        
+        if max_depth > 2:
+            return False
+        
+        if nested_ratio > 0.3:
+            return False
+        
+        return True

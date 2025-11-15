@@ -167,6 +167,19 @@ function displayPreviewContent(data) {
     html += `<tr><td><strong>Size:</strong></td><td>${formatBytes(metadata.size)}</td></tr>`;
     html += `<tr><td><strong>Uploaded:</strong></td><td>${new Date(metadata.uploaded_at).toLocaleString()}</td></tr>`;
     
+    // Category information
+    if (metadata.final_category) {
+        const displayName = metadata.categorization?.display_name || metadata.final_category.replace(/_/g, ' ');
+        html += `<tr><td><strong>Category:</strong></td><td><span style="color: #667eea; font-weight: bold;">${displayName}</span></td></tr>`;
+    }
+    
+    if (metadata.categorization) {
+        html += `<tr><td><strong>Extension Category:</strong></td><td>${metadata.categorization.extension_category}</td></tr>`;
+        if (metadata.categorization.content_category) {
+            html += `<tr><td><strong>Content Category:</strong></td><td>${metadata.categorization.content_category}</td></tr>`;
+        }
+    }
+    
     if (metadata.folder_id) {
         html += `<tr><td><strong>Folder ID:</strong></td><td>${metadata.folder_id}</td></tr>`;
     }

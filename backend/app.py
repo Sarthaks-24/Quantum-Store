@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 import os
 import uuid
 from datetime import datetime
@@ -15,10 +15,12 @@ from processors.json_processor import JSONProcessor
 from processors.text_processor import TextProcessor
 from processors.image_processor import ImageProcessor
 from processors.pdf_processor import PDFProcessor
+from processors.video_processor import VideoProcessor
 from rules.rules import RuleEngine
 from storage.store import LocalStore
 from utils.file_utils import get_file_type, save_uploaded_file, save_upload_file, clean_filename
 from utils.serializers import sanitize_for_json
+from classifier import classify_file  # NEW: Unified classifier
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
@@ -69,7 +71,69 @@ json_processor = JSONProcessor()
 text_processor = TextProcessor()
 image_processor = ImageProcessor()
 pdf_processor = PDFProcessor()
+video_processor = VideoProcessor()
 rule_engine = RuleEngine()
+
+def save_analysis_with_classification(
+    file_id: str,
+    file_type: str,
+    analysis: Dict[str, Any],
+    metadata: Dict[str, Any],
+    file_path: str
+) -> Dict[str, Any]:
+    """
+    UNIFIED CLASSIFICATION FUNCTION - Single entry point.
+    Uses new classifier.py for all categorization.
+    
+    Args:
+        file_id: File identifier
+        file_type: Type of file from initial detection
+        analysis: Analysis results from processor
+        metadata: File metadata
+        file_path: Path to file
+    
+    Returns:
+        Updated analysis with classification
+    """
+    # Read file bytes for magic byte detection (first 512 bytes)
+    file_bytes = None
+    try:
+        with open(file_path, 'rb') as f:
+            file_bytes = f.read(512)
+    except:
+        pass
+    
+    # Run unified classification
+    classification = classify_file(
+        filename=metadata["filename"],
+        file_path=file_path,
+        mime_type=metadata.get("mime_type"),
+        file_bytes=file_bytes,
+        analysis=analysis  # Pass processor analysis for content-based classification
+    )
+    
+    print(f"[CLASSIFY] {metadata['filename']}")
+    print(f"  Type: {classification['type']}")
+    print(f"  Subtype: {classification['subtype']}")
+    print(f"  Category: {classification['category']}")
+    print(f"  Confidence: {classification['confidence']:.2f}")
+    print(f"  Detected from: {classification['metadata'].get('detected_from')}")
+    
+    # SINGLE category field - store full classification
+    metadata["classification"] = classification
+    metadata["category"] = classification["category"]  # For backward compatibility/grouping
+    store.save_metadata(file_id, metadata)
+    
+    # Add classification to analysis
+    analysis["classification"] = classification
+    
+    # Save analysis
+    store.save_analysis(file_id, file_type, analysis)
+    
+    # Add to group by category (idempotent - uses index)
+    store.add_file_to_group(file_id, classification["category"])
+    
+    return analysis
 
 @app.get("/health")
 async def health_check():
@@ -77,20 +141,24 @@ async def health_check():
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
+    """Upload single file with normalized detection and categorization."""
     try:
         file_id = str(uuid.uuid4())
-        filename = file.filename  # Store filename before reading
-        file_type = get_file_type(filename)
+        filename = file.filename
         
-        # Save file and immediately check size (safeguard for missing Content-Length)
+        # Determine file type with comprehensive PDF detection
+        file_type = get_file_type(filename, file.content_type)
+        
+        print(f"[UPLOAD] File: {filename}, Type: {file_type}, MIME: {file.content_type}")
+        
+        # Save file and check size
         file_path = await save_upload_file(file, file_id)
         file_size = os.path.getsize(file_path)
         
-        # Secondary size check after file is written
+        # Secondary size check
         if file_size > MAX_UPLOAD_SIZE:
-            os.remove(file_path)  # Delete oversized file
+            os.remove(file_path)
             size_mb = file_size / (1024 * 1024)
-            print(f"[UPLOAD_LIMIT] Rejecting file after upload: {filename} = {file_size:,} bytes ({size_mb:.2f} MB)")
             raise HTTPException(
                 status_code=413,
                 detail={
@@ -102,10 +170,12 @@ async def upload_file(file: UploadFile = File(...)):
                 }
             )
         
+        # Create metadata with MIME type for classifier
         metadata = {
             "id": file_id,
             "filename": filename,
             "file_type": file_type,
+            "mime_type": file.content_type,
             "size": file_size,
             "uploaded_at": datetime.utcnow().isoformat(),
             "path": file_path
@@ -122,132 +192,27 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/upload/folder")
-async def upload_folder(files: List[UploadFile] = File(...)):
-    try:
-        results = []
-        folder_id = str(uuid.uuid4())
-        uploaded_at = datetime.utcnow().isoformat()
-        
-        for file in files:
-            filename = None
-            try:
-                file_id = str(uuid.uuid4())
-                filename = file.filename  # Store filename before reading
-                file_type = get_file_type(filename)
-                
-                file_path = await save_upload_file(file, file_id)
-                file_size = os.path.getsize(file_path)
-                
-                # Check individual file size (safeguard)
-                if file_size > MAX_UPLOAD_SIZE:
-                    os.remove(file_path)
-                    size_mb = file_size / (1024 * 1024)
-                    print(f"[UPLOAD_LIMIT] Rejecting file in folder upload: {filename} = {file_size:,} bytes ({size_mb:.2f} MB)")
-                    results.append({
-                        "filename": filename,
-                        "error": f"File exceeds 1GB limit ({size_mb:.2f} MB)",
-                        "status": "failed"
-                    })
-                    continue
-                
-                metadata = {
-                    "id": file_id,
-                    "filename": filename,
-                    "file_type": file_type,
-                    "size": file_size,
-                    "uploaded_at": uploaded_at,
-                    "path": file_path,
-                    "folder_id": folder_id
-                }
-                
-                store.save_metadata(file_id, metadata)
-                
-                # Auto-analyze based on file type
-                analysis = None
-                try:
-                    if file_type == "json":
-                        file_size = os.path.getsize(file_path)
-                        analysis = json_processor.analyze(file_path, file_size)
-                        store.save_analysis(file_id, "json", analysis)
-                    elif file_type == "text":
-                        all_files = store.get_all_files()
-                        corpus_paths = [f["path"] for f in all_files if f.get("file_type") == "text"]
-                        analysis = text_processor.analyze(file_path, corpus_paths)
-                        store.save_analysis(file_id, "text", analysis)
-                    elif file_type == "image":
-                        analysis = image_processor.analyze(file_path)
-                        store.save_analysis(file_id, "image", analysis)
-                        store.update_phash_index(file_id, analysis.get("phash"))
-                except Exception as analysis_error:
-                    print(f"Analysis failed for {filename}: {str(analysis_error)}")
-                    analysis = {"error": str(analysis_error)}
-                
-                results.append({
-                    "file_id": file_id,
-                    "filename": filename,
-                    "file_type": file_type,
-                    "size": metadata["size"],
-                    "analyzed": analysis is not None and "error" not in analysis,
-                    "analysis_preview": {
-                        "type": file_type,
-                        "status": "success" if analysis and "error" not in analysis else "failed"
-                    } if analysis else None
-                })
-            except Exception as file_error:
-                error_filename = filename if filename else "<unknown>"
-                results.append({
-                    "filename": error_filename,
-                    "error": str(file_error),
-                    "status": "failed"
-                })
-        
-        return JSONResponse(content={
-            "folder_id": folder_id,
-            "total_files": len(files),
-            "successful": len([r for r in results if "error" not in r]),
-            "failed": len([r for r in results if "error" in r]),
-            "results": results,
-            "message": f"Processed {len(files)} files from folder"
-        })
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/upload/batch")
 async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = Form(None)):
-    """
-    Upload multiple files (up to 50 at a time).
-    All files are saved to data/raw/uploads/ with the same folder_id prefix.
-    """
+    """Upload multiple files with comprehensive file type detection."""
     try:
-        # Generate folder_id if not provided
         if not folder_id:
             folder_id = f"upload_{uuid.uuid4().hex[:8]}"
         
         uploaded_at = datetime.utcnow().isoformat()
         results = []
         
-        print(f"\n{'='*70}")
-        print(f"[UPLOAD] Starting multi-file upload ({len(files)} files)")
-        print(f"[UPLOAD] Folder ID: {folder_id}")
-        print(f"{'='*70}\n")
+        print(f"[UPLOAD] Batch upload starting: {len(files)} files, folder: {folder_id}")
         
         for file in files:
-            # Store filename BEFORE reading to avoid losing UploadFile reference
             filename = None
             try:
-                # Extract filename while file is still UploadFile
                 filename = file.filename
-                
-                print(f"[UPLOAD] → Uploading {filename}...")
-                
-                # Read file content
                 file_content = await file.read()
                 file_size = len(file_content)
                 
                 if file_size > MAX_UPLOAD_SIZE:
                     size_mb = file_size / (1024 * 1024)
-                    print(f"[UPLOAD] → {filename} rejected: {size_mb:.2f} MB exceeds limit")
                     results.append({
                         "filename": filename,
                         "error": f"File exceeds {MAX_UPLOAD_SIZE_MB:.0f}MB limit ({size_mb:.2f}MB)",
@@ -255,39 +220,35 @@ async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = For
                     })
                     continue
                 
-                # Save file with bytes content (filename will be sanitized inside save_uploaded_file)
                 file_id = str(uuid.uuid4())
                 file_path = save_uploaded_file(file_content, filename, folder_id)
                 
-                # Get file type
-                file_type = get_file_type(file_path)
+                # Comprehensive file type detection
+                file_type = get_file_type(filename, file.content_type)
                 
-                # Save metadata (consistent with single file and folder upload)
                 metadata = {
                     "id": file_id,
                     "filename": filename,
                     "file_type": file_type,
+                    "mime_type": file.content_type,
                     "path": file_path,
                     "size": file_size,
                     "uploaded_at": uploaded_at,
                     "folder_id": folder_id
                 }
                 store.save_metadata(file_id, metadata)
-                print(f"[UPLOAD] → {filename} uploaded (ID: {file_id[:8]}...) ... OK")
                 
                 results.append({
                     "file_id": file_id,
                     "filename": filename,
                     "file_type": file_type,
                     "size": file_size,
-                    "analyzed": False  # Analysis will be done separately via /analyze endpoints
+                    "analyzed": False
                 })
                 
             except Exception as file_error:
-                # Use stored filename or fallback
                 error_filename = filename if filename else "<unknown>"
-                print(f"[UPLOAD] → {error_filename} failed: {str(file_error)}")
-                traceback.print_exc()
+                print(f"[UPLOAD] File {error_filename} failed: {str(file_error)}")
                 results.append({
                     "filename": error_filename,
                     "error": str(file_error),
@@ -297,7 +258,7 @@ async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = For
         successful = len([r for r in results if "error" not in r and r.get("status") != "rejected"])
         failed = len([r for r in results if "error" in r or r.get("status") == "rejected"])
         
-        print(f"[UPLOAD] Completed ({successful}/{len(files)} files)\n")
+        print(f"[UPLOAD] Batch complete: {successful}/{len(files)} successful")
         
         return JSONResponse(content={
             "folder_id": folder_id,
@@ -309,217 +270,164 @@ async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = For
         })
         
     except Exception as e:
-        print(f"[UPLOAD] Error: {str(e)}")
+        print(f"[UPLOAD] Batch upload error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze/json")
 async def analyze_json(file_id: str):
+    """Analyze JSON file with deep classification and SQL schema generation."""
     try:
-        print(f"\n{'='*60}")
-        print(f"[ANALYZE JSON] Starting analysis for file_id: {file_id}")
-        print(f"{'='*60}")
+        print(f"[ANALYSIS] JSON analysis starting for {file_id}")
         
-        # Step 1: Get metadata
-        print("[STEP 1] Retrieving metadata...")
         metadata = store.get_metadata(file_id)
         if not metadata:
             raise HTTPException(status_code=404, detail="File not found")
-        print(f"  ✓ Metadata retrieved: {metadata.get('filename', 'unknown')}")
         
         file_path = metadata["path"]
         file_size = metadata.get("size", 0)
-        print(f"  ✓ File path: {file_path}")
-        print(f"  ✓ File size: {file_size:,} bytes ({file_size / (1024*1024):.2f} MB)")
         
-        # Step 2: Analyze JSON
-        print("\n[STEP 2] Analyzing JSON file...")
+        # Analyze
         analysis = json_processor.analyze(file_path, file_size)
-        print(f"  ✓ Analysis complete")
-        print(f"  - Record count: {analysis.get('record_count', 'N/A')}")
-        print(f"  - Is large file: {analysis.get('is_large_file', False)}")
-        print(f"  - Has schema: {'schema' in analysis}")
-        print(f"  - Has samples: {'samples' in analysis}")
         
-        # Debug: Check for problematic types in analysis
-        print("\n[DEBUG] Checking analysis for non-serializable types...")
-        from decimal import Decimal
-        import numpy as np
+        # Save with unified classification
+        analysis = save_analysis_with_classification(file_id, "json", analysis, metadata, file_path)
         
-        def check_types(obj, path="root"):
-            """Recursively check for problematic types"""
-            if isinstance(obj, Decimal):
-                print(f"  ⚠ Found Decimal at {path}: {obj}")
-            elif isinstance(obj, (np.integer, np.floating)):
-                print(f"  ⚠ Found numpy type at {path}: {type(obj).__name__}")
-            elif isinstance(obj, dict):
-                for key, value in obj.items():
-                    check_types(value, f"{path}.{key}")
-            elif isinstance(obj, (list, tuple)):
-                for i, item in enumerate(obj[:5]):  # Check first 5 items
-                    check_types(item, f"{path}[{i}]")
-        
-        check_types(analysis)
-        print("  ✓ Type check complete")
-        
-        # Step 3: Save analysis
-        print("\n[STEP 3] Saving analysis to metadata...")
-        store.save_analysis(file_id, "json", analysis)
-        print("  ✓ Analysis saved")
-        
-        # Step 4: Handle schema database for large files
-        if analysis.get("is_large_file") and "schema" in analysis:
-            print("\n[STEP 4] Creating schema database (large file)...")
+        # Generate SQL schema for SQL-suitable JSON
+        content_category = analysis.get("content_category", "")
+        if "sql" in content_category.lower() and "schema" in analysis:
+            print(f"[ANALYSIS] Generating SQL schema for {content_category}")
+            db_path = os.path.join(store.schemas_path, f"{file_id}.db")
             schema = analysis["schema"]
             samples = analysis.get("samples", [])
-            print(f"  - Schema fields: {len(schema)}")
-            print(f"  - Sample count: {len(samples)}")
             
-            # Create schema database
-            db_path = os.path.join(store.schemas_path, f"{file_id}.db")
-            print(f"  - DB path: {db_path}")
-            json_processor.create_schema_database(file_id, schema, samples, db_path)
-            print("  ✓ Schema database created")
-            
-            # Save schema reference
-            print("  - Saving schema reference...")
-            schema_id = store.save_schema(schema)
-            print(f"  ✓ Schema saved with ID: {schema_id}")
-            
-            # Add database info to metadata
-            if schema_id:
-                metadata["schema_id"] = schema_id
-                metadata["schema_db"] = db_path
-                print("  - Updating metadata with schema info...")
-                store.save_metadata(file_id, metadata)
-                print("  ✓ Metadata updated")
-        elif "schema" in analysis:
-            print("\n[STEP 4] Saving schema (small file)...")
-            # Save schema for small files too
-            schema_id = store.save_schema(analysis["schema"])
-            if schema_id:
-                metadata["schema_id"] = schema_id
-                store.save_metadata(file_id, metadata)
-                print(f"  ✓ Schema saved with ID: {schema_id}")
+            if json_processor.create_schema_database(file_id, schema, samples, db_path):
+                # Save schema reference
+                schema_id = store.save_schema(schema)
+                if schema_id:
+                    metadata["schema_id"] = schema_id
+                    metadata["schema_db"] = db_path
+                    store.save_metadata(file_id, metadata)
+                    print(f"[ANALYSIS] SQL schema saved: {schema_id}")
         
-        print("\n[SUCCESS] Analysis complete, sanitizing for response...")
-        # Sanitize analysis before returning to ensure JSON-serializable
-        analysis_sanitized = sanitize_for_json(analysis)
-        print(f"{'='*60}\n")
-        return JSONResponse(content=analysis_sanitized)
+        print(f"[ANALYSIS] JSON analysis complete: {content_category}")
+        return JSONResponse(content=sanitize_for_json(analysis))
         
     except HTTPException:
         raise
     except Exception as e:
-        print("\n" + "="*60)
-        print("[ERROR] Exception caught in /analyze/json")
-        print("="*60)
-        print(f"Error type: {type(e).__name__}")
-        print(f"Error message: {str(e)}")
-        print("\nFull traceback:")
-        print("-"*60)
+        print(f"[ERROR] JSON analysis failed: {str(e)}")
         traceback.print_exc()
-        print("-"*60)
-        print("="*60 + "\n")
-        
-        # Return detailed error
-        raise HTTPException(
-            status_code=500, 
-            detail={
-                "error": str(e),
-                "type": type(e).__name__,
-                "traceback": traceback.format_exc()
-            }
-        )
-    except Exception as e:
-        print("\n[ERROR] Exception in /upload")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail={"error": str(e), "traceback": traceback.format_exc()})
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze/text")
 async def analyze_text(file_id: str):
+    """Analyze text file."""
     try:
+        print(f"[ANALYSIS] Text analysis starting for {file_id}")
+        
         metadata = store.get_metadata(file_id)
         if not metadata:
             raise HTTPException(status_code=404, detail="File not found")
         
         file_path = metadata["path"]
-        
         all_files = store.get_all_files()
         corpus_paths = [f["path"] for f in all_files if f.get("file_type") == "text"]
         
+        # Analyze
         analysis = text_processor.analyze(file_path, corpus_paths)
         
-        store.save_analysis(file_id, "text", analysis)
+        # Save with unified classification
+        analysis = save_analysis_with_classification(file_id, "text", analysis, metadata, file_path)
         
-        analysis_sanitized = sanitize_for_json(analysis)
-        return JSONResponse(content=analysis_sanitized)
+        print(f"[ANALYSIS] Text analysis complete for {file_id}")
+        return JSONResponse(content=sanitize_for_json(analysis))
+        
     except Exception as e:
+        print(f"[ERROR] Text analysis failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze/image")
 async def analyze_image(file_id: str):
+    """Analyze image file."""
     try:
+        print(f"[ANALYSIS] Image analysis starting for {file_id}")
+        
         metadata = store.get_metadata(file_id)
         if not metadata:
             raise HTTPException(status_code=404, detail="File not found")
         
         file_path = metadata["path"]
         
+        # Analyze
         analysis = image_processor.analyze(file_path)
         
-        store.save_analysis(file_id, "image", analysis)
-        store.update_phash_index(file_id, analysis.get("phash"))
+        # Update pHash index
+        if analysis.get("phash"):
+            store.update_phash_index(file_id, analysis["phash"])
         
-        analysis_sanitized = sanitize_for_json(analysis)
-        return JSONResponse(content=analysis_sanitized)
+        # Save with unified classification
+        analysis = save_analysis_with_classification(file_id, "image", analysis, metadata, file_path)
+        
+        print(f"[ANALYSIS] Image analysis complete for {file_id}")
+        return JSONResponse(content=sanitize_for_json(analysis))
+        
     except Exception as e:
+        print(f"[ERROR] Image analysis failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analyze/pdf")
 async def analyze_pdf(file_id: str):
-    """Analyze a PDF file with OCR fallback for scanned documents"""
+    """Analyze PDF with comprehensive detection and OCR fallback."""
     try:
-        print(f"\n{'='*60}")
-        print(f"[ANALYZE PDF] Starting analysis for file_id: {file_id}")
-        print(f"{'='*60}")
+        print(f"[ANALYSIS] PDF analysis starting for {file_id}")
         
-        # Get metadata
-        print("[STEP 1] Retrieving metadata...")
         metadata = store.get_metadata(file_id)
         if not metadata:
             raise HTTPException(status_code=404, detail="File not found")
-        print(f"  ✓ Metadata retrieved: {metadata.get('filename', 'unknown')}")
         
         file_path = metadata["path"]
-        print(f"  ✓ File path: {file_path}")
         
-        # Analyze PDF
-        print("\n[STEP 2] Analyzing PDF file...")
-        print("  → Detecting PDF content...")
-        print("  → Extracting metadata...")
+        # Analyze
         analysis = pdf_processor.analyze(file_path)
-        print(f"  ✓ Analysis complete")
-        print(f"  - Page count: {analysis.get('page_count', 'N/A')}")
-        print(f"  - Is scanned: {analysis.get('is_scanned', False)}")
-        print(f"  - Text length: {analysis.get('text_length', 0)} chars")
-        print(f"  - Has OCR: {analysis.get('has_ocr', False)}")
         
-        # Save analysis
-        print("\n[STEP 3] Saving analysis results...")
-        store.save_analysis(file_id, "pdf", analysis)
-        print("  ✓ Analysis saved")
+        # Save with unified classification
+        analysis = save_analysis_with_classification(file_id, "pdf", analysis, metadata, file_path)
         
-        print(f"\n[SUCCESS] PDF analysis complete")
-        print(f"{'='*60}\n")
-        
-        # Sanitize and return
-        analysis_sanitized = sanitize_for_json(analysis)
-        return JSONResponse(content=analysis_sanitized)
+        print(f"[ANALYSIS] PDF analysis complete for {file_id}")
+        return JSONResponse(content=sanitize_for_json(analysis))
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"\n[ERROR] Exception in /analyze/pdf: {str(e)}")
+        print(f"[ERROR] PDF analysis failed: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/analyze/video")
+async def analyze_video(file_id: str):
+    """Analyze video file."""
+    try:
+        print(f"[ANALYSIS] Video analysis starting for {file_id}")
+        
+        metadata = store.get_metadata(file_id)
+        if not metadata:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        file_path = metadata["path"]
+        
+        # Analyze
+        analysis = video_processor.analyze(file_path)
+        
+        # Save with unified classification
+        analysis = save_analysis_with_classification(file_id, "video", analysis, metadata, file_path)
+        
+        print(f"[ANALYSIS] Video analysis complete for {file_id}")
+        return JSONResponse(content=sanitize_for_json(analysis))
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Video analysis failed: {str(e)}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -544,6 +452,60 @@ async def get_files():
     try:
         files = store.get_all_files()
         return JSONResponse(content={"files": files, "count": len(files)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/groups")
+async def get_groups():
+    """Get all category groups with their files."""
+    try:
+        groups = store.get_all_groups()
+        
+        # Add count summary
+        summary = {
+            category: len(files)
+            for category, files in groups.items()
+        }
+        
+        return JSONResponse(content={
+            "groups": groups,
+            "summary": summary,
+            "total_categories": len(groups)
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/groups/{category}")
+async def get_group(category: str):
+    """Get all files in a specific category."""
+    try:
+        files = store.get_group_files(category)
+        return JSONResponse(content={
+            "category": category,
+            "files": files,
+            "count": len(files)
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/groups/rebuild")
+async def rebuild_groups():
+    """Rebuild all category groups from metadata."""
+    try:
+        success = store.rebuild_groups()
+        if success:
+            groups = store.get_all_groups()
+            summary = {
+                category: len(files)
+                for category, files in groups.items()
+            }
+            return JSONResponse(content={
+                "success": True,
+                "message": "Groups rebuilt successfully",
+                "summary": summary
+            })
+        else:
+            raise HTTPException(status_code=500, detail="Failed to rebuild groups")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

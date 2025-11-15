@@ -34,46 +34,52 @@ folderInput.addEventListener('change', async (e) => {
 });
 
 async function handleFiles(files) {
-    addLog('System', `Processing ${files.length} file(s)...`);
-    
     for (const file of files) {
         try {
-            addLog('Upload', `Uploading ${file.name}...`);
+            // UPLOAD PHASE (0-50%)
+            addLog('Upload', `[UPLOAD] Starting upload: ${file.name}`);
             
             const uploadResult = await api.uploadFile(file);
             const fileId = uploadResult.file_id;
             const fileType = uploadResult.file_type;
             
-            addLog('Success', `Uploaded ${file.name} (ID: ${fileId})`);
+            addLog('Upload', `[UPLOAD] ✓ Complete: ${file.name} (ID: ${fileId.substring(0, 8)}...)`);
             
-            addLog('Analysis', `Starting ${fileType} analysis for ${file.name}...`);
+            // ANALYSIS PHASE (50-100%)
+            addLog('Analysis', `[ANALYSIS] Starting ${fileType} analysis...`);
             
             let analysis;
             if (fileType === 'json') {
                 analysis = await api.analyzeJSON(fileId);
-                displayJSONAnalysis(file.name, analysis);
             } else if (fileType === 'text') {
                 analysis = await api.analyzeText(fileId);
-                displayTextAnalysis(file.name, analysis);
             } else if (fileType === 'image') {
                 analysis = await api.analyzeImage(fileId);
-                displayImageAnalysis(file.name, analysis);
+            } else if (fileType === 'pdf') {
+                analysis = await api.analyzePDF(fileId);
+            } else if (fileType === 'video') {
+                analysis = await api.analyzeVideo(fileId);
             }
             
-            if (analysis && analysis.reasoning_log) {
-                analysis.reasoning_log.forEach(log => {
-                    addLog('Reasoning', log.replace(/^\[.*?\]\s*/, ''));
-                });
+            if (analysis) {
+                const category = analysis.category || 'uncategorized';
+                addLog('Analysis', `[ANALYSIS] ✓ Complete: ${file.name} (Category: ${category})`);
+                
+                // Display analysis results
+                if (fileType === 'json') {
+                    displayJSONAnalysis(file.name, analysis);
+                } else if (fileType === 'text') {
+                    displayTextAnalysis(file.name, analysis);
+                } else if (fileType === 'image') {
+                    displayImageAnalysis(file.name, analysis);
+                }
             }
-            
-            addLog('Complete', `Analysis complete for ${file.name}`);
             
         } catch (error) {
-            // Check if it's a 413 (upload too large) error
             if (error.message.includes('413') || error.message.toLowerCase().includes('1gb limit')) {
                 addLog('Error', `❌ File too large: ${file.name} exceeds 1GB limit`);
             } else {
-                addLog('Error', `Failed to process ${file.name}: ${error.message}`);
+                addLog('Error', `❌ Failed: ${file.name} - ${error.message}`);
             }
             console.error(error);
         }
@@ -392,11 +398,16 @@ async function loadFiles() {
             
             const sizeKB = (file.size / 1024).toFixed(2);
             
+            // Get category display
+            const category = file.final_category || 'uncategorized';
+            const categoryDisplay = file.categorization?.display_name || category.replace(/_/g, ' ');
+            
             fileItem.innerHTML = `
                 <div class="file-info">
                     <div class="file-name">📄 ${file.filename}</div>
                     <div class="file-meta">
                         Type: ${file.file_type} | Size: ${sizeKB} KB | 
+                        Category: <strong>${categoryDisplay}</strong> |
                         Uploaded: ${new Date(file.uploaded_at).toLocaleString()}
                     </div>
                 </div>
@@ -458,7 +469,77 @@ async function autoGroup() {
         addLog('Success', `Created ${Object.keys(result.groups).length} group(s)`);
         
     } catch (error) {
-        addLog('Error', `Failed to auto-group: ${error.message}`);
+        addLog('Error', `Auto-grouping failed: ${error.message}`);
         console.error(error);
     }
 }
+
+async function loadGroups() {
+    try {
+        addLog('System', 'Loading category groups...');
+        
+        const result = await api.getAllGroups();
+        
+        const categoriesCard = document.getElementById('categoriesCard');
+        const categoriesSummary = document.getElementById('categoriesSummary');
+        const categoriesContainer = document.getElementById('categoriesContainer');
+        
+        categoriesCard.style.display = 'block';
+        
+        // Display summary
+        let summaryHTML = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">';
+        for (const [category, count] of Object.entries(result.summary)) {
+            const displayName = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            summaryHTML += `
+                <div style="background: #f0f2ff; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 1.5em; color: #667eea; font-weight: bold;">${count}</div>
+                    <div style="font-size: 0.9em; color: #666; margin-top: 5px;">${displayName}</div>
+                </div>
+            `;
+        }
+        summaryHTML += '</div>';
+        categoriesSummary.innerHTML = summaryHTML;
+        
+        // Display categories with files
+        let categoriesHTML = '';
+        for (const [category, files] of Object.entries(result.groups)) {
+            const displayName = category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            
+            categoriesHTML += `
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: #667eea; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 2px solid #667eea;">
+                        ${displayName} (${files.length})
+                    </h3>
+                    <div style="display: grid; gap: 10px;">
+            `;
+            
+            files.forEach(file => {
+                categoriesHTML += `
+                    <div class="file-item" onclick="openFilePreview('${file.file_id}')">
+                        <div class="file-info">
+                            <div class="file-name">📄 ${file.filename}</div>
+                            <div class="file-meta">Type: ${file.file_type}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            categoriesHTML += `
+                    </div>
+                </div>
+            `;
+        }
+        
+        categoriesContainer.innerHTML = categoriesHTML;
+        
+        addLog('Success', `Loaded ${result.total_categories} categor${result.total_categories === 1 ? 'y' : 'ies'}`);
+        
+        // Scroll to view
+        categoriesCard.scrollIntoView({ behavior: 'smooth' });
+        
+    } catch (error) {
+        addLog('Error', `Failed to load categories: ${error.message}`);
+        console.error(error);
+    }
+}
+

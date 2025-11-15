@@ -4,6 +4,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 import sys
+import traceback
 
 # Add parent directory to path for imports
 if __name__ != "__main__":
@@ -14,10 +15,18 @@ else:
     from utils.serializers import sanitize_for_json
 
 class LocalStore:
-    def __init__(self, base_path: str = "data"):
+    def __init__(self, base_path: str = None):
+        # Default to root/data directory (parent of backend)
+        if base_path is None:
+            # __file__ is backend/storage/store.py
+            storage_dir = os.path.dirname(os.path.abspath(__file__))  # backend/storage
+            backend_dir = os.path.dirname(storage_dir)  # backend
+            root_dir = os.path.dirname(backend_dir)  # root
+            base_path = os.path.join(root_dir, "data")
         self.base_path = base_path
         self.metadata_path = os.path.join(base_path, "processed", "metadata")
         self.schemas_path = os.path.join(base_path, "processed", "schemas")
+        self.groups_path = os.path.join(base_path, "processed", "groups")
         self.cache_path = os.path.join(base_path, "cache")
         self.uploads_path = os.path.join(base_path, "raw", "uploads")
         
@@ -28,6 +37,7 @@ class LocalStore:
         """Create necessary directories if they don't exist."""
         os.makedirs(self.metadata_path, exist_ok=True)
         os.makedirs(self.schemas_path, exist_ok=True)
+        os.makedirs(self.groups_path, exist_ok=True)
         os.makedirs(self.cache_path, exist_ok=True)
         os.makedirs(self.uploads_path, exist_ok=True)
     
@@ -220,3 +230,162 @@ class LocalStore:
         
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
+    
+    def add_file_to_group(self, file_id: str, category: str) -> bool:
+        """
+        Add file to category group (IDEMPOTENT).
+        Uses index.json approach - no file copying, no duplicates.
+        
+        Args:
+            file_id: File identifier
+            category: Category name
+        
+        Returns:
+            True if successful
+        """
+        try:
+            metadata = self.get_metadata(file_id)
+            if not metadata:
+                return False
+            
+            # Create category directory
+            category_path = os.path.join(self.groups_path, category)
+            os.makedirs(category_path, exist_ok=True)
+            
+            # Load or create index
+            index_path = os.path.join(category_path, "index.json")
+            if os.path.exists(index_path):
+                with open(index_path, 'r', encoding='utf-8') as f:
+                    index = json.load(f)
+            else:
+                index = {
+                    "category": category,
+                    "created_at": datetime.utcnow().isoformat(),
+                    "files": []
+                }
+            
+            # Check if already in index (idempotent check)
+            existing_ids = {f["file_id"] for f in index["files"]}
+            if file_id in existing_ids:
+                print(f"[STORE] File {file_id} already in group '{category}'")
+                return True
+            
+            # Add to index
+            index["files"].append({
+                "file_id": file_id,
+                "filename": metadata.get("filename", "unknown"),
+                "file_type": metadata.get("file_type", "unknown"),
+                "added_at": datetime.utcnow().isoformat()
+            })
+            
+            index["updated_at"] = datetime.utcnow().isoformat()
+            index["file_count"] = len(index["files"])
+            
+            # Save index
+            with open(index_path, 'w', encoding='utf-8') as f:
+                json.dump(index, f, indent=2, ensure_ascii=False)
+            
+            print(f"[STORE] Added {file_id} to group '{category}' (total: {len(index['files'])})")
+            return True
+            
+        except Exception as e:
+            print(f"[STORE] Error adding file to group: {e}")
+            traceback.print_exc()
+            return False
+    
+    def remove_file_from_group(self, file_id: str, category: str) -> bool:
+        """Remove a file from a category group index."""
+        try:
+            index_path = os.path.join(self.groups_path, category, "index.json")
+            if not os.path.exists(index_path):
+                return False
+            
+            with open(index_path, 'r', encoding='utf-8') as f:
+                index = json.load(f)
+            
+            # Filter out the file
+            original_count = len(index.get("files", []))
+            index["files"] = [f for f in index["files"] if f["file_id"] != file_id]
+            new_count = len(index["files"])
+            
+            if original_count != new_count:
+                index["updated_at"] = datetime.utcnow().isoformat()
+                index["file_count"] = new_count
+                
+                with open(index_path, 'w', encoding='utf-8') as f:
+                    json.dump(index, f, indent=2, ensure_ascii=False)
+                
+                print(f"[STORE] Removed {file_id} from group '{category}'")
+            
+            return True
+        except Exception as e:
+            print(f"[STORE] Error removing file from group: {e}")
+            return False
+    
+    def get_group_files(self, category: str) -> List[Dict[str, Any]]:
+        """Get all files in a category group from index."""
+        try:
+            index_path = os.path.join(self.groups_path, category, "index.json")
+            if not os.path.exists(index_path):
+                return []
+            
+            with open(index_path, 'r', encoding='utf-8') as f:
+                index = json.load(f)
+            
+            return index.get("files", [])
+        except Exception as e:
+            print(f"[STORE] Error getting group files: {e}")
+            return []
+    
+    def get_all_groups(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Get all category groups with their files from indices."""
+        try:
+            if not os.path.exists(self.groups_path):
+                return {}
+            
+            groups = {}
+            for category_name in os.listdir(self.groups_path):
+                category_path = os.path.join(self.groups_path, category_name)
+                if os.path.isdir(category_path):
+                    groups[category_name] = self.get_group_files(category_name)
+            
+            return groups
+        except Exception as e:
+            print(f"[STORE] Error getting all groups: {e}")
+            return {}
+    
+    def rebuild_groups(self) -> bool:
+        """
+        Rebuild all groups from metadata (idempotent).
+        Clears old indices and rebuilds from scratch.
+        """
+        try:
+            print("[STORE] Rebuilding all groups from metadata...")
+            
+            # Clear existing groups
+            if os.path.exists(self.groups_path):
+                import shutil
+                shutil.rmtree(self.groups_path)
+            os.makedirs(self.groups_path, exist_ok=True)
+            
+            # Get all files
+            all_files = self.get_all_files()
+            
+            # Add each file to its group
+            added_count = 0
+            for file_data in all_files:
+                file_id = file_data.get("id")
+                # Use 'category' field (new unified approach)
+                category = file_data.get("category") or file_data.get("final_category")
+                
+                if file_id and category:
+                    if self.add_file_to_group(file_id, category):
+                        added_count += 1
+            
+            print(f"[STORE] Rebuilt groups: {added_count}/{len(all_files)} files categorized")
+            return True
+            
+        except Exception as e:
+            print(f"[STORE] Error rebuilding groups: {e}")
+            traceback.print_exc()
+            return False

@@ -28,6 +28,9 @@ class ImageProcessor:
         histogram = self._calculate_histogram(img_array)
         category = self._categorize_image(img, img_array, basic_info, colors, quality_metrics)
         
+        # Add content_category for Layer 2 categorization
+        content_category = self._determine_content_category(img, basic_info, category)
+        
         return {
             **basic_info,
             "colors": colors,
@@ -35,6 +38,7 @@ class ImageProcessor:
             "phash": phash,
             "histogram": histogram,
             "category": category,
+            "content_category": content_category,
             "reasoning_log": self.reasoning_log
         }
     
@@ -234,3 +238,50 @@ class ImageProcessor:
     def log_reasoning(self, message: str):
         timestamp = datetime.utcnow().isoformat()
         self.reasoning_log.append(f"[{timestamp}] {message}")
+    
+    def _determine_content_category(
+        self,
+        img: Image.Image,
+        basic_info: Dict[str, Any],
+        category_info: Dict[str, Any]
+    ) -> str:
+        """
+        Determine content category for Layer 2 categorization.
+        
+        Returns one of:
+        - images_portrait: Portrait photos
+        - images_screenshot: Screenshots
+        - images_graphics: Graphics/illustrations
+        - images_photos: General photos
+        - images_landscape: Landscape orientation
+        """
+        width = basic_info.get("width", 0)
+        height = basic_info.get("height", 0)
+        aspect_ratio = basic_info.get("aspect_ratio", 1.0)
+        
+        # Get the basic category from existing analysis
+        basic_category = category_info.get("category", "unknown")
+        
+        # Screenshot detection
+        if basic_category == "screenshot":
+            return "images_screenshot"
+        
+        # Graphics/logos
+        if basic_category in ["logo", "graphic"]:
+            return "images_graphics"
+        
+        # Photo categorization
+        if basic_category == "photo":
+            # Portrait vs landscape
+            if aspect_ratio < 0.8:  # Taller than wide
+                return "images_portrait"
+            else:
+                return "images_landscape"
+        
+        # Default fallback
+        if aspect_ratio < 0.8:
+            return "images_portrait"
+        elif basic_info.get("has_exif", False):
+            return "images_photos"
+        else:
+            return "images_graphics"

@@ -3,75 +3,155 @@ import shutil
 from typing import Optional
 from fastapi import UploadFile
 import mimetypes
+import re
 
 def clean_filename(filename: str) -> str:
-    """Clean filename by removing path separators and getting basename.
+    """
+    Sanitize filename to prevent path traversal and security issues.
     
     Args:
-        filename: Original filename (may contain folder paths like 'Nearby Share/file.txt')
+        filename: Original filename (may contain folder paths)
     
     Returns:
-        Sanitized filename with path separators replaced by underscores
-    
-    Examples:
-        'Nearby Share/IMG.jpg' -> 'Nearby Share_IMG.jpg'
-        'folder\\subfolder\\file.txt' -> 'folder_subfolder_file.txt'
+        Sanitized filename (basename only, safe characters)
     """
-    # First, get just the basename to avoid nested folders
+    # Get basename only (remove any folder paths)
     basename = os.path.basename(filename)
     
-    # Also replace any remaining path separators with underscores
-    sanitized = basename.replace("/", "_").replace("\\", "_")
+    # Remove or replace unsafe characters
+    # Keep alphanumeric, dots, hyphens, underscores
+    safe_name = re.sub(r'[^\w\s\-\.]', '_', basename)
     
-    # Remove any potentially dangerous characters
-    sanitized = sanitized.replace("..", "_")
+    # Remove leading/trailing whitespace and dots
+    safe_name = safe_name.strip('. ')
     
-    return sanitized
+    # Ensure it's not empty
+    if not safe_name:
+        safe_name = "unnamed_file"
+    
+    return safe_name
 
-def get_file_type(filename: str) -> str:
-    """Determine file type based on extension."""
-    ext = os.path.splitext(filename)[1].lower()
+def normalize_extension(filename: str) -> str:
+    """
+    Extract and normalize file extension.
     
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'}
-    text_extensions = {'.txt', '.md', '.csv', '.log', '.rtf'}
-    json_extensions = {'.json'}
-    pdf_extensions = {'.pdf'}
-    video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
+    Args:
+        filename: Filename (may include path)
     
-    if ext in json_extensions:
+    Returns:
+        Lowercase extension without dot (e.g., 'pdf' not '.pdf')
+    """
+    basename = os.path.basename(filename)
+    _, ext = os.path.splitext(basename)
+    return ext.lower().lstrip('.')
+
+def detect_file_type_comprehensive(filename: str, mime_type: Optional[str] = None, file_bytes: Optional[bytes] = None) -> str:
+    """
+    COMPREHENSIVE file type detection using multiple methods.
+    
+    Detection priority:
+    1. Magic bytes (file header)
+    2. File extension (normalized)
+    3. MIME type
+    
+    Args:
+        filename: File name or path
+        mime_type: Optional MIME type from upload
+        file_bytes: Optional first 512 bytes for magic byte detection
+    
+    Returns:
+        File type: 'json', 'pdf', 'image', 'text', 'video', 'unknown'
+    """
+    # METHOD 1: Magic bytes detection (most reliable)
+    if file_bytes:
+        # PDF magic bytes
+        if file_bytes.startswith(b'%PDF'):
+            return "pdf"
+        # PNG magic bytes
+        elif file_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
+            return "image"
+        # JPEG magic bytes
+        elif file_bytes.startswith(b'\xff\xd8\xff'):
+            return "image"
+        # GIF magic bytes
+        elif file_bytes.startswith(b'GIF87a') or file_bytes.startswith(b'GIF89a'):
+            return "image"
+        # JSON detection (starts with { or [, allowing whitespace)
+        stripped = file_bytes.lstrip()
+        if stripped.startswith(b'{') or stripped.startswith(b'['):
+            return "json"
+    
+    # METHOD 2: Extension-based detection (normalized, case-insensitive)
+    ext = normalize_extension(filename)
+    
+    if ext == 'json':
         return "json"
-    elif ext in pdf_extensions:
+    elif ext == 'pdf':
         return "pdf"
-    elif ext in image_extensions:
+    elif ext in {'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'tif', 'svg'}:
         return "image"
-    elif ext in text_extensions:
+    elif ext in {'txt', 'md', 'csv', 'log', 'rtf'}:
         return "text"
-    elif ext in video_extensions:
+    elif ext in {'mp4', 'avi', 'mov', 'mkv', 'webm', 'flv', 'wmv'}:
         return "video"
-    else:
-        mime_type, _ = mimetypes.guess_type(filename)
-        if mime_type:
-            if mime_type.startswith('image/'):
-                return "image"
-            elif mime_type.startswith('text/'):
-                return "text"
-            elif mime_type.startswith('video/'):
-                return "video"
-        
-        return "unknown"
+    
+    # METHOD 3: MIME type fallback
+    if mime_type:
+        mime_lower = mime_type.lower()
+        if 'pdf' in mime_lower:
+            return "pdf"
+        elif mime_lower.startswith('image/'):
+            return "image"
+        elif mime_lower.startswith('text/'):
+            return "text"
+        elif mime_lower.startswith('video/'):
+            return "video"
+        elif mime_lower.startswith('application/json'):
+            return "json"
+    
+    # METHOD 4: Final MIME guess from filename
+    guessed_mime, _ = mimetypes.guess_type(filename)
+    if guessed_mime:
+        if 'pdf' in guessed_mime:
+            return "pdf"
+        elif guessed_mime.startswith('image/'):
+            return "image"
+        elif guessed_mime.startswith('text/'):
+            return "text"
+        elif guessed_mime.startswith('video/'):
+            return "video"
+        elif guessed_mime.startswith('application/json'):
+            return "json"
+    
+    return "unknown"
 
-def save_uploaded_file(file_content: bytes, filename: str, folder_id: str, base_path: str = "data") -> str:
+def get_file_type(filename: str, mime_type: Optional[str] = None) -> str:
+    """
+    Determine file type (backward compatibility wrapper).
+    Use detect_file_type_comprehensive for full detection.
+    """
+    return detect_file_type_comprehensive(filename, mime_type, None)
+
+def save_uploaded_file(file_content: bytes, filename: str, folder_id: str, base_path: str = None) -> str:
     """Save uploaded file content and return its path.
     
     Args:
         file_content: Raw bytes content of the file
         filename: Original filename (may contain folder paths)
         folder_id: Folder ID for organizing files (used as prefix)
-        base_path: Base directory for uploads
+        base_path: Base directory for uploads (defaults to root/data)
     
     Returns:
         Full path to the saved file
     """
+    # Default to root/data directory
+    if base_path is None:
+        # __file__ is backend/utils/file_utils.py
+        utils_dir = os.path.dirname(os.path.abspath(__file__))  # backend/utils
+        backend_dir = os.path.dirname(utils_dir)  # backend
+        root_dir = os.path.dirname(backend_dir)  # root
+        base_path = os.path.join(root_dir, "data")
+    
     # Sanitize filename to prevent path traversal and nested folder issues
     safe_filename = clean_filename(filename)
     
@@ -93,17 +173,25 @@ def save_uploaded_file(file_content: bytes, filename: str, folder_id: str, base_
     
     return file_path
 
-async def save_upload_file(file: UploadFile, file_id: str, base_path: str = "data") -> str:
+async def save_upload_file(file: UploadFile, file_id: str, base_path: str = None) -> str:
     """Save an UploadFile object and return its path.
     
     Args:
         file: FastAPI UploadFile object
         file_id: Unique identifier for the file
-        base_path: Base directory for uploads
+        base_path: Base directory for uploads (defaults to root/data)
     
     Returns:
         Full path to the saved file
     """
+    # Default to root/data directory
+    if base_path is None:
+        # __file__ is backend/utils/file_utils.py
+        utils_dir = os.path.dirname(os.path.abspath(__file__))  # backend/utils
+        backend_dir = os.path.dirname(utils_dir)  # backend
+        root_dir = os.path.dirname(backend_dir)  # root
+        base_path = os.path.join(root_dir, "data")
+    
     # Sanitize filename to prevent issues with folder paths
     safe_filename = clean_filename(file.filename)
     

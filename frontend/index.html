@@ -524,6 +524,7 @@
             <div style="text-align: center; margin-top: 20px;">
                 <button class="btn" onclick="document.getElementById('folderInput').click()">📂 Upload Folder</button>
                 <button class="btn" onclick="loadFiles()">📋 Load All Files</button>
+                <button class="btn" onclick="loadGroups()">🗂️ View Categories</button>
                 <button class="btn btn-secondary" onclick="autoGroup()">🗂️ Auto-Group Files</button>
             </div>
         </div>
@@ -531,6 +532,12 @@
         <div class="card">
             <h2 style="color: #667eea; margin-bottom: 15px;">📊 Files</h2>
             <div id="filesList"></div>
+        </div>
+
+        <div class="card" id="categoriesCard" style="display: none;">
+            <h2 style="color: #667eea; margin-bottom: 15px;">🗂️ File Categories</h2>
+            <div id="categoriesSummary" style="margin-bottom: 20px;"></div>
+            <div id="categoriesContainer"></div>
         </div>
 
         <div class="card">

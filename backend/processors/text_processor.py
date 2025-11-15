@@ -23,6 +23,9 @@ class TextProcessor:
         
         tokens = self._tokenize(text)
         
+        # Determine content category
+        content_category = self._determine_content_category(file_path, text, tokens)
+        
         analysis = {
             "char_count": len(text),
             "word_count": len(tokens),
@@ -33,6 +36,7 @@ class TextProcessor:
                 "top_20": self._get_top_tokens(tokens, 20)
             },
             "readability": self._calculate_readability(text, tokens),
+            "content_category": content_category,
             "reasoning_log": self.reasoning_log
         }
         
@@ -198,6 +202,47 @@ class TextProcessor:
             previous_row = current_row
         
         return previous_row[-1]
+    
+    def _determine_content_category(
+        self,
+        file_path: str,
+        text: str,
+        tokens: List[str]
+    ) -> str:
+        """
+        Determine content category for text files.
+        
+        Returns one of:
+        - text_docs: Plain text
+        - markdown_docs: Markdown files
+        - code_docs: Code documentation
+        - logs: Log files
+        """
+        import os
+        
+        # Check file extension
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+        
+        if ext in ['.md', '.markdown']:
+            return "markdown_docs"
+        
+        # Check content patterns for logs
+        log_patterns = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'timestamp', 'exception']
+        log_pattern_count = sum(1 for pattern in log_patterns if pattern.lower() in text.lower())
+        
+        if log_pattern_count >= 3:
+            return "logs"
+        
+        # Check for code documentation patterns
+        doc_patterns = ['@param', '@return', '/**', '*/', 'Args:', 'Returns:']
+        doc_pattern_count = sum(1 for pattern in doc_patterns if pattern in text)
+        
+        if doc_pattern_count >= 2:
+            return "code_docs"
+        
+        # Default to plain text
+        return "text_docs"
     
     def log_reasoning(self, message: str):
         timestamp = datetime.utcnow().isoformat()

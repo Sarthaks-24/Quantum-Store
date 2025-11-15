@@ -16,10 +16,10 @@ class PDFProcessor:
         self._ocr_initialized = False
     
     def _init_ocr(self):
-        """Lazy initialization of OCR engine"""
+        """Lazy initialization of OCR engine (PaddleOCR is optional dependency)"""
         if not self._ocr_initialized:
             try:
-                from paddleocr import PaddleOCR
+                from paddleocr import PaddleOCR  # type: ignore[import-untyped]
                 # Initialize with English language, use CPU
                 self.ocr_engine = PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
                 self._ocr_initialized = True
@@ -70,9 +70,11 @@ class PDFProcessor:
             is_scanned = not has_text
             ocr_text = ""
             
-            if is_scanned and page_count > 0:
-                print("[PDF] No extractable text found - PDF appears to be scanned")
-                print("[PDF] Running OCR on pages...")
+            # AUTOMATIC OCR: Trigger if text length < 30 chars
+            if (is_scanned or len(extracted_text) < 30) and page_count > 0:
+                print("[PDF] Minimal/no extractable text - triggering automatic OCR")
+                print(f"[PDF] Extracted text length: {len(extracted_text)} chars (threshold: 30)")
+                is_scanned = True
                 ocr_text = self._extract_text_with_ocr(doc)
             
             # Combine extracted and OCR text
@@ -85,10 +87,14 @@ class PDFProcessor:
             # Get file size
             file_size = os.path.getsize(file_path)
             
+            # Analyze content for categorization (before closing doc)
+            category_analysis = self._analyze_for_classification(doc, final_text, is_scanned)
+            
             # Close document
             doc.close()
             
             print(f"[PDF] Analysis complete - Text length: {len(final_text)} chars, Is scanned: {is_scanned}")
+            print(f"[PDF] Categories: {category_analysis.get('categories', {})}")
             
             return {
                 "type": "pdf",
@@ -107,7 +113,13 @@ class PDFProcessor:
                 "text_length": len(final_text),
                 "is_scanned": is_scanned,
                 "has_ocr": bool(ocr_text),
-                "file_size": file_size
+                "has_forms": category_analysis.get('has_forms', False),
+                "file_size": file_size,
+                # Metrics for classifier
+                "image_count": category_analysis.get('image_count', 0),
+                "image_ratio": category_analysis.get('image_ratio', 0),
+                "text_ratio": category_analysis.get('text_ratio', 0),
+                "categories": category_analysis.get('categories', {}),
             }
             
         except Exception as e:
@@ -243,3 +255,92 @@ class PDFProcessor:
         except Exception as e:
             print(f"[PDF] Error extracting page text: {e}")
             return ""
+    
+    def _analyze_for_classification(self, doc: fitz.Document, text: str, is_scanned: bool) -> Dict[str, Any]:
+        """
+        Analyze PDF content and provide metrics for the unified classifier.
+        
+        Returns metrics dict with:
+        - image_count, image_ratio, text_ratio
+        - categories: {financial: score, academic: score, report: score}
+        - has_forms: bool
+        """
+        # Analyze document structure
+        total_pages = len(doc)
+        total_images = 0
+        total_text_blocks = 0
+        total_tables = 0
+        has_forms = False
+        
+        # Sample first 10 pages for performance
+        pages_to_sample = min(total_pages, 10)
+        
+        for page_num in range(pages_to_sample):
+            try:
+                page = doc[page_num]
+                
+                # Count images
+                image_list = page.get_images()
+                total_images += len(image_list)
+                
+                # Count text blocks
+                blocks = page.get_text("blocks")
+                text_blocks = [b for b in blocks if len(b) > 4 and b[4].strip()]
+                total_text_blocks += len(text_blocks)
+                
+                # Detect tables (heuristic: many small blocks in grid)
+                if len(blocks) > 15:
+                    total_tables += 1
+                
+                # Check for form fields
+                if page.first_widget:
+                    has_forms = True
+            except:
+                pass
+        
+        # Calculate ratios
+        total_elements = total_images + total_text_blocks
+        image_ratio = total_images / total_elements if total_elements > 0 else 0
+        text_ratio = total_text_blocks / total_elements if total_elements > 0 else 1.0
+        
+        # Keyword analysis
+        text_lower = text.lower() if text else ""
+        total_words = len(text_lower.split())
+        
+        # Financial indicators
+        financial_keywords = [
+            'revenue', 'profit', 'loss', 'balance', 'asset', 'liability',
+            'income', 'expense', 'financial', 'fiscal', 'quarter', 'earnings',
+            'shareholder', 'dividend', 'investment', 'budget'
+        ]
+        financial_count = sum(1 for kw in financial_keywords if kw in text_lower)
+        financial_score = (financial_count / len(financial_keywords)) if financial_keywords else 0
+        
+        # Academic indicators
+        academic_keywords = [
+            'abstract', 'introduction', 'methodology', 'conclusion', 'references',
+            'bibliography', 'citation', 'journal', 'university', 'research',
+            'hypothesis', 'experiment', 'analysis', 'results', 'discussion'
+        ]
+        academic_count = sum(1 for kw in academic_keywords if kw in text_lower)
+        academic_score = (academic_count / len(academic_keywords)) if academic_keywords else 0
+        
+        # Report indicators
+        report_keywords = [
+            'executive summary', 'table of contents', 'chapter', 'section',
+            'appendix', 'overview', 'findings', 'recommendations', 'summary'
+        ]
+        report_count = sum(1 for kw in report_keywords if kw in text_lower)
+        report_score = (report_count / len(report_keywords)) if report_keywords else 0
+        
+        return {
+            'image_count': total_images,
+            'image_ratio': image_ratio,
+            'text_ratio': text_ratio,
+            'has_forms': has_forms,
+            'categories': {
+                'financial': financial_score,
+                'academic': academic_score,
+                'report': report_score
+            }
+        }

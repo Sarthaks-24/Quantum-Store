@@ -3,6 +3,7 @@
 from .json_processor import JSONProcessor
 from .text_processor import TextProcessor
 from .image_processor import ImageProcessor
-from .video_processor import process_video
+from .pdf_processor import PDFProcessor
+from .video_processor import VideoProcessor
 
-__all__ = ['JSONProcessor', 'TextProcessor', 'ImageProcessor', 'process_video']
+__all__ = ['JSONProcessor', 'TextProcessor', 'ImageProcessor', 'PDFProcessor', 'VideoProcessor']
