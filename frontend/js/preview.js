@@ -100,6 +100,38 @@ function displayPreviewContent(data) {
         html += `<pre class="preview-text">${escapeHtml(preview.content)}</pre>`;
     } else if (preview.type === 'json' && preview.content) {
         html += `<pre class="preview-json">${escapeHtml(preview.content)}</pre>`;
+    } else if (preview.type === 'pdf' && preview.content) {
+        // PDF preview with image and text
+        html += '<div style="width: 100%;">';
+        
+        if (preview.content.image) {
+            html += `
+                <div style="margin-bottom: 15px; text-align: center;">
+                    <img src="data:image/png;base64,${preview.content.image}" alt="PDF Preview" class="preview-image">
+                    <p style="color: #888; font-size: 0.9em; margin-top: 10px;">
+                        Page 1 of ${preview.content.page_count || '?'}
+                        ${preview.content.is_scanned ? ' (Scanned - OCR used)' : ''}
+                    </p>
+                </div>
+            `;
+        }
+        
+        if (preview.content.text && preview.content.text.trim()) {
+            html += `
+                <div style="margin-top: 15px;">
+                    <h4 style="color: #667eea; margin-bottom: 10px;">Extracted Text:</h4>
+                    <pre class="preview-text">${escapeHtml(preview.content.text)}</pre>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="preview-placeholder" style="padding: 20px;">
+                    <p style="color: #888;">No text could be extracted from this PDF</p>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
     } else if (preview.type === 'video') {
         html += `
             <div class="preview-placeholder">
@@ -156,6 +188,23 @@ function displayPreviewContent(data) {
             html += `<p><strong>Records:</strong> ${analysis.record_count}</p>`;
             if (analysis.schema) {
                 html += `<p><strong>Fields:</strong> ${Object.keys(analysis.schema).length}</p>`;
+            }
+        } else if (metadata.file_type === 'pdf') {
+            if (analysis.page_count) {
+                html += `<p><strong>Pages:</strong> ${analysis.page_count}</p>`;
+            }
+            if (analysis.text_length !== undefined) {
+                html += `<p><strong>Text Length:</strong> ${analysis.text_length.toLocaleString()} characters</p>`;
+            }
+            if (analysis.is_scanned !== undefined) {
+                html += `<p><strong>Document Type:</strong> ${analysis.is_scanned ? 'Scanned (OCR used)' : 'Digital (Text extractable)'}</p>`;
+            }
+            if (analysis.metadata) {
+                const pdfMeta = analysis.metadata;
+                if (pdfMeta.title) html += `<p><strong>Title:</strong> ${pdfMeta.title}</p>`;
+                if (pdfMeta.author) html += `<p><strong>Author:</strong> ${pdfMeta.author}</p>`;
+                if (pdfMeta.subject) html += `<p><strong>Subject:</strong> ${pdfMeta.subject}</p>`;
+                if (pdfMeta.creator) html += `<p><strong>Creator:</strong> ${pdfMeta.creator}</p>`;
             }
         } else if (metadata.file_type === 'text' && analysis.word_count) {
             html += `<p><strong>Words:</strong> ${analysis.word_count}</p>`;

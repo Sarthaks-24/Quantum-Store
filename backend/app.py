@@ -14,6 +14,7 @@ import io
 from processors.json_processor import JSONProcessor
 from processors.text_processor import TextProcessor
 from processors.image_processor import ImageProcessor
+from processors.pdf_processor import PDFProcessor
 from rules.rules import RuleEngine
 from storage.store import LocalStore
 from utils.file_utils import get_file_type, save_uploaded_file, save_upload_file, clean_filename
@@ -67,6 +68,7 @@ store = LocalStore()
 json_processor = JSONProcessor()
 text_processor = TextProcessor()
 image_processor = ImageProcessor()
+pdf_processor = PDFProcessor()
 rule_engine = RuleEngine()
 
 @app.get("/health")
@@ -473,6 +475,54 @@ async def analyze_image(file_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyze/pdf")
+async def analyze_pdf(file_id: str):
+    """Analyze a PDF file with OCR fallback for scanned documents"""
+    try:
+        print(f"\n{'='*60}")
+        print(f"[ANALYZE PDF] Starting analysis for file_id: {file_id}")
+        print(f"{'='*60}")
+        
+        # Get metadata
+        print("[STEP 1] Retrieving metadata...")
+        metadata = store.get_metadata(file_id)
+        if not metadata:
+            raise HTTPException(status_code=404, detail="File not found")
+        print(f"  ✓ Metadata retrieved: {metadata.get('filename', 'unknown')}")
+        
+        file_path = metadata["path"]
+        print(f"  ✓ File path: {file_path}")
+        
+        # Analyze PDF
+        print("\n[STEP 2] Analyzing PDF file...")
+        print("  → Detecting PDF content...")
+        print("  → Extracting metadata...")
+        analysis = pdf_processor.analyze(file_path)
+        print(f"  ✓ Analysis complete")
+        print(f"  - Page count: {analysis.get('page_count', 'N/A')}")
+        print(f"  - Is scanned: {analysis.get('is_scanned', False)}")
+        print(f"  - Text length: {analysis.get('text_length', 0)} chars")
+        print(f"  - Has OCR: {analysis.get('has_ocr', False)}")
+        
+        # Save analysis
+        print("\n[STEP 3] Saving analysis results...")
+        store.save_analysis(file_id, "pdf", analysis)
+        print("  ✓ Analysis saved")
+        
+        print(f"\n[SUCCESS] PDF analysis complete")
+        print(f"{'='*60}\n")
+        
+        # Sanitize and return
+        analysis_sanitized = sanitize_for_json(analysis)
+        return JSONResponse(content=analysis_sanitized)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"\n[ERROR] Exception in /analyze/pdf: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/file/{file_id}")
 async def get_file(file_id: str):
     try:
@@ -575,6 +625,31 @@ async def get_file_preview(file_id: str):
             except Exception as e:
                 print(f"Error reading JSON file: {e}")
                 preview_content = None
+        
+        elif file_type == "pdf":
+            # For PDFs, return preview image and text from analysis
+            preview_type = "pdf"
+            preview_data = {}
+            
+            # If analysis exists, use it; otherwise generate preview on-the-fly
+            if analysis and "preview" in analysis:
+                preview_data["image"] = analysis["preview"]
+                preview_data["text"] = analysis.get("text", "")[:5000]  # First 5000 chars
+                preview_data["page_count"] = analysis.get("page_count", 0)
+                preview_data["is_scanned"] = analysis.get("is_scanned", False)
+            else:
+                # Generate preview on-the-fly
+                try:
+                    pdf_preview = pdf_processor.analyze(file_path)
+                    preview_data["image"] = pdf_preview.get("preview", "")
+                    preview_data["text"] = pdf_preview.get("text", "")[:5000]
+                    preview_data["page_count"] = pdf_preview.get("page_count", 0)
+                    preview_data["is_scanned"] = pdf_preview.get("is_scanned", False)
+                except Exception as e:
+                    print(f"Error generating PDF preview: {e}")
+                    preview_data = {}
+            
+            preview_content = preview_data
         
         elif file_type == "video":
             # For videos, just indicate no preview (don't load full file)

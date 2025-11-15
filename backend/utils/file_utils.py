@@ -35,10 +35,13 @@ def get_file_type(filename: str) -> str:
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff'}
     text_extensions = {'.txt', '.md', '.csv', '.log', '.rtf'}
     json_extensions = {'.json'}
+    pdf_extensions = {'.pdf'}
     video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
     
     if ext in json_extensions:
         return "json"
+    elif ext in pdf_extensions:
+        return "pdf"
     elif ext in image_extensions:
         return "image"
     elif ext in text_extensions:

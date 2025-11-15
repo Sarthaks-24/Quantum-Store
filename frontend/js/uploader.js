@@ -223,6 +223,14 @@ async function handleFolderUpload(files) {
                     addLog('Analysis', `[ANALYSIS] → Extracting image metadata...`);
                     analysisResult = await api.analyzeImage(fileId);
                     addLog('Analysis', `[ANALYSIS] → Computing perceptual hash...`);
+                } else if (fileType === 'pdf') {
+                    addLog('Analysis', `[ANALYSIS] → Detecting PDF content...`);
+                    addLog('Analysis', `[ANALYSIS] → Extracting metadata...`);
+                    addLog('Analysis', `[ANALYSIS] → Checking for selectable text...`);
+                    analysisResult = await api.analyzePDF(fileId);
+                    if (analysisResult.is_scanned) {
+                        addLog('Analysis', `[ANALYSIS] → Running OCR (scanned document detected)...`);
+                    }
                 } else {
                     addLog('Analysis', `[ANALYSIS] → Unsupported type, skipping analysis`);
                 }

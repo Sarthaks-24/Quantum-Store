@@ -100,6 +100,18 @@ class QuantumStoreAPI {
         return await response.json();
     }
 
+    async analyzePDF(fileId) {
+        const response = await fetch(`${API_BASE_URL}/analyze/pdf?file_id=${fileId}`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Analysis failed: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
     async getFile(fileId) {
         const response = await fetch(`${API_BASE_URL}/file/${fileId}`);
 
