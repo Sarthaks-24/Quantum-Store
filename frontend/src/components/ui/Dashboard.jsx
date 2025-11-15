@@ -42,11 +42,17 @@ const Dashboard = () => {
     try {
       const [summaryData, filesData, allFiles] = await Promise.all([
         fetchSummary(),
-        fetchRecentFiles(6),
+        fetchRecentFiles(100),
         fetchFiles()
       ]);
       setSummary(summaryData);
-      setRecentFiles(filesData);
+      // Sort by newest first and take only last 10
+      const sortedFiles = [...filesData].sort((a, b) => {
+        const dateA = new Date(a.uploaded_at || 0);
+        const dateB = new Date(b.uploaded_at || 0);
+        return dateB - dateA;
+      });
+      setRecentFiles(sortedFiles.slice(0, 10));
       
       // Compute weekly activity from all files and normalize
       const weeklyData = normalizeWeeklyActivity(computeWeeklyActivity(allFiles));

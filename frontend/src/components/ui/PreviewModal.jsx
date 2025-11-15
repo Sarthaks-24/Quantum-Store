@@ -27,6 +27,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   const [loading, setLoading] = useState(true);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [expandedFields, setExpandedFields] = useState({});
 
   // Find current file index
   const currentIndex = files.findIndex(f => f.id === file.id);
@@ -166,23 +167,57 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       );
     }
 
+    const toggleExpand = (key) => {
+      setExpandedFields(prev => ({
+        ...prev,
+        [key]: !prev[key]
+      }));
+    };
+
+    const renderValue = (key, value) => {
+      if (typeof value === 'string' && value.length > 400) {
+        const isExpanded = expandedFields[key];
+        const displayText = isExpanded ? value : value.substring(0, 400) + '...';
+        
+        return (
+          <div>
+            <div className="text-sm font-medium whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+              {displayText}
+            </div>
+            <button
+              onClick={() => toggleExpand(key)}
+              className="mt-2 px-3 py-1 bg-accent-indigo/20 hover:bg-accent-indigo/30 text-accent-indigo rounded-lg text-xs font-medium transition-colors"
+            >
+              {isExpanded ? 'Show Less' : 'Show More'}
+            </button>
+          </div>
+        );
+      }
+      
+      if (typeof value === 'number' && value < 1 && value > 0) {
+        return `${(value * 100).toFixed(1)}%`;
+      }
+      
+      if (typeof value === 'string') {
+        return <div className="text-lg font-semibold whitespace-pre-wrap break-words">{value}</div>;
+      }
+      
+      return <div className="text-lg font-semibold">{String(value)}</div>;
+    };
+
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
         <h3 className="text-lg font-semibold mb-4">Analytics Results</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {Object.entries(analytics).map(([key, value]) => {
             if (key === 'error' || typeof value === 'object') return null;
             
             return (
               <div key={key} className="glass-card p-4 rounded-xl">
-                <div className="text-white/60 text-sm mb-1 capitalize">
+                <div className="text-white/60 text-sm mb-2 capitalize">
                   {key.replace(/_/g, ' ')}
                 </div>
-                <div className="text-lg font-semibold">
-                  {typeof value === 'number' && value < 1 && value > 0
-                    ? `${(value * 100).toFixed(1)}%`
-                    : String(value)}
-                </div>
+                {renderValue(key, value)}
               </div>
             );
           })}
@@ -190,16 +225,18 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
 
         {Object.entries(analytics).some(([, value]) => typeof value === 'object' && value !== null) && (
           <div className="glass-card p-4 rounded-xl mt-4">
-            <h4 className="text-sm font-semibold text-white/80 mb-2">Additional Data</h4>
-            <pre className="text-xs text-white/60 overflow-x-auto">
-              {JSON.stringify(
-                Object.fromEntries(
-                  Object.entries(analytics).filter(([, value]) => typeof value === 'object' && value !== null)
-                ),
-                null,
-                2
-              )}
-            </pre>
+            <h4 className="text-sm font-semibold text-white/80 mb-3">Additional Data</h4>
+            <div className="max-h-64 overflow-y-auto">
+              <pre className="text-xs text-white/60 whitespace-pre-wrap break-words">
+                {JSON.stringify(
+                  Object.fromEntries(
+                    Object.entries(analytics).filter(([, value]) => typeof value === 'object' && value !== null)
+                  ),
+                  null,
+                  2
+                )}
+              </pre>
+            </div>
           </div>
         )}
       </div>
@@ -326,7 +363,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
           </div>
 
           {/* Content */}
-          <div className="p-6">
+          <div className="p-6 max-h-[calc(90vh-200px)] overflow-y-auto">
             {activeTab === 'preview' ? (
               loading ? (
                 <div className="text-center py-12">

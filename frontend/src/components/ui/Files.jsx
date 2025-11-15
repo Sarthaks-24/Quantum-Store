@@ -218,40 +218,46 @@ const Files = () => {
             <select
               value={selectedDateRange}
               onChange={(e) => setSelectedDateRange(e.target.value)}
-              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer"
+              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer text-white shadow-xl"
             >
-              <option value="all">All Dates</option>
-              <option value="today">Today</option>
-              <option value="week">Last 7 Days</option>
-              <option value="month">Last 30 Days</option>
+              <option value="all" className="bg-slate-800 text-white">All Dates</option>
+              <option value="today" className="bg-slate-800 text-white">Today</option>
+              <option value="week" className="bg-slate-800 text-white">Last 7 Days</option>
+              <option value="month" className="bg-slate-800 text-white">Last 30 Days</option>
             </select>
 
             {/* Size Range Filter */}
             <select
               value={selectedSizeRange}
               onChange={(e) => setSelectedSizeRange(e.target.value)}
-              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer"
+              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer text-white shadow-xl"
             >
-              <option value="all">All Sizes</option>
-              <option value="small">Small (&lt;1MB)</option>
-              <option value="medium">Medium (1-10MB)</option>
-              <option value="large">Large (&gt;10MB)</option>
+              <option value="all" className="bg-slate-800 text-white">All Sizes</option>
+              <option value="small" className="bg-slate-800 text-white">Small (&lt;1MB)</option>
+              <option value="medium" className="bg-slate-800 text-white">Medium (1-10MB)</option>
+              <option value="large" className="bg-slate-800 text-white">Large (&gt;10MB)</option>
             </select>
 
             {/* Sort Dropdown */}
-            <div className="relative">
-              <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
+            <div className="relative z-10">
+              <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40 pointer-events-none" size={20} />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="pl-10 pr-8 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer appearance-none"
+                className="pl-10 pr-8 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer appearance-none text-white shadow-xl"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 0.75rem center',
+                  backgroundSize: '12px'
+                }}
               >
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="largest">Largest First</option>
-                <option value="smallest">Smallest First</option>
-                <option value="name-asc">A → Z</option>
-                <option value="name-desc">Z → A</option>
+                <option value="newest" className="bg-slate-800 text-white">Newest First</option>
+                <option value="oldest" className="bg-slate-800 text-white">Oldest First</option>
+                <option value="largest" className="bg-slate-800 text-white">Largest First</option>
+                <option value="smallest" className="bg-slate-800 text-white">Smallest First</option>
+                <option value="name-asc" className="bg-slate-800 text-white">A → Z</option>
+                <option value="name-desc" className="bg-slate-800 text-white">Z → A</option>
               </select>
             </div>
           </div>
