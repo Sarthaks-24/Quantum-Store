@@ -69,13 +69,37 @@ async def analyze_json(file_id: str):
             raise HTTPException(status_code=404, detail="File not found")
         
         file_path = metadata["path"]
+        file_size = metadata.get("size", 0)
         
-        analysis = json_processor.analyze(file_path)
+        # Analyze with file size for streaming decision
+        analysis = json_processor.analyze(file_path, file_size)
         
+        # Save analysis (now contains only samples, not full data)
         store.save_analysis(file_id, "json", analysis)
         
-        if "schema" in analysis:
-            store.save_schema(analysis["schema"])
+        # For large files with consistent schema, create SQLite database
+        if analysis.get("is_large_file") and "schema" in analysis:
+            schema = analysis["schema"]
+            samples = analysis.get("samples", [])
+            
+            # Create schema database
+            db_path = os.path.join(store.schemas_path, f"{file_id}.db")
+            json_processor.create_schema_database(file_id, schema, samples, db_path)
+            
+            # Save schema reference
+            schema_id = store.save_schema(schema)
+            
+            # Add database info to metadata
+            if schema_id:
+                metadata["schema_id"] = schema_id
+                metadata["schema_db"] = db_path
+                store.save_metadata(file_id, metadata)
+        elif "schema" in analysis:
+            # Save schema for small files too
+            schema_id = store.save_schema(analysis["schema"])
+            if schema_id:
+                metadata["schema_id"] = schema_id
+                store.save_metadata(file_id, metadata)
         
         return JSONResponse(content=analysis)
     except Exception as e:
