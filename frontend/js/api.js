@@ -150,6 +150,20 @@ class QuantumStoreAPI {
             return false;
         }
     }
+
+    async getFilePreview(fileId) {
+        const response = await fetch(`${API_BASE_URL}/file/${fileId}/preview`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch file preview: ${response.statusText}`);
+        }
+
+        return await response.json();
+    }
+
+    getFileDownloadUrl(fileId) {
+        return `${API_BASE_URL}/file/${fileId}/download`;
+    }
 }
 
 const api = new QuantumStoreAPI();

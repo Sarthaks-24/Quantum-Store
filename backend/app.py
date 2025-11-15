@@ -1,12 +1,15 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from typing import List, Optional, Dict
 import os
 import uuid
 from datetime import datetime
 import traceback
 import sys
+import base64
+from PIL import Image
+import io
 
 from processors.json_processor import JSONProcessor
 from processors.text_processor import TextProcessor
@@ -514,6 +517,120 @@ async def get_schemas():
         schemas = store.get_all_schemas()
         return JSONResponse(content={"schemas": schemas, "count": len(schemas)})
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/file/{file_id}/preview")
+async def get_file_preview(file_id: str):
+    """Get file preview with metadata and base64 content preview."""
+    try:
+        # Load metadata
+        metadata = store.get_metadata(file_id)
+        if not metadata:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        file_path = metadata.get("path")
+        file_type = metadata.get("file_type", "unknown")
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        # Load analysis if available
+        analysis = store.get_analysis(file_id)
+        
+        # Generate preview based on file type
+        preview_content = None
+        preview_type = None
+        
+        if file_type == "image":
+            # Generate base64 thumbnail for images
+            try:
+                with Image.open(file_path) as img:
+                    # Create thumbnail (max 400x400)
+                    img.thumbnail((400, 400), Image.Resampling.LANCZOS)
+                    buffer = io.BytesIO()
+                    img.save(buffer, format=img.format or 'PNG')
+                    preview_content = base64.b64encode(buffer.getvalue()).decode('utf-8')
+                    preview_type = "image"
+            except Exception as e:
+                print(f"Error generating image thumbnail: {e}")
+                preview_content = None
+        
+        elif file_type == "text":
+            # Return first 5000 characters of text
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    preview_content = f.read(5000)
+                    preview_type = "text"
+            except Exception as e:
+                print(f"Error reading text file: {e}")
+                preview_content = None
+        
+        elif file_type == "json":
+            # Return formatted JSON (first 5000 chars)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read(5000)
+                    preview_content = content
+                    preview_type = "json"
+            except Exception as e:
+                print(f"Error reading JSON file: {e}")
+                preview_content = None
+        
+        elif file_type == "video":
+            # For videos, just indicate no preview (don't load full file)
+            preview_type = "video"
+            preview_content = None
+        
+        elif file_type == "audio":
+            # For audio, just indicate no preview
+            preview_type = "audio"
+            preview_content = None
+        
+        else:
+            preview_type = "unknown"
+            preview_content = None
+        
+        return JSONResponse(content={
+            "file_id": file_id,
+            "metadata": metadata,
+            "analysis": analysis,
+            "preview": {
+                "type": preview_type,
+                "content": preview_content
+            }
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in file preview: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/file/{file_id}/download")
+async def download_file(file_id: str):
+    """Download the actual file."""
+    try:
+        metadata = store.get_metadata(file_id)
+        if not metadata:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        file_path = metadata.get("path")
+        filename = metadata.get("filename", "download")
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        return FileResponse(
+            path=file_path,
+            filename=filename,
+            media_type='application/octet-stream'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in file download: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

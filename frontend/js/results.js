@@ -316,7 +316,7 @@ function displayGroups(groups) {
         
         files.forEach(file => {
             html += `
-                <div class="group-item">
+                <div class="group-item" onclick="openFilePreview('${file.id}')" style="cursor: pointer;">
                     📄 ${file.filename || file.id}
                 </div>
             `;

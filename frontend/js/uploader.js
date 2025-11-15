@@ -380,6 +380,7 @@ async function loadFiles() {
         result.files.forEach(file => {
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
+            fileItem.onclick = () => openFilePreview(file.id);
             
             const sizeKB = (file.size / 1024).toFixed(2);
             
@@ -392,7 +393,7 @@ async function loadFiles() {
                     </div>
                 </div>
                 <div class="file-actions">
-                    <button class="btn" onclick="viewFile('${file.id}')">View Details</button>
+                    <button class="btn" onclick="event.stopPropagation(); openFilePreview('${file.id}')">👁️ Preview</button>
                 </div>
             `;
             
