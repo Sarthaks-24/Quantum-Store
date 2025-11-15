@@ -1,635 +1,973 @@
 """
-QuantumStore Unified Classification System
-===========================================
+QuantumStore Advanced Multi-Level Classification System
+========================================================
 
-SINGLE SOURCE OF TRUTH for file classification.
-Completely rebuilt from scratch.
+COMPLETELY REWRITTEN - Advanced categorization for ALL file types.
 
 Classification Output:
 {
-    "type": "pdf" | "json" | "text" | "image" | "audio" | "video" | "binary",
-    "subtype": "document" | "scanned" | "structured_data" | etc.,
-    "category": "pdf_financial" | "json_structured_sql" | etc.,
-    "confidence": 0.0 - 1.0,
-    "metadata": {...}  # Additional classification details
+    "type": "image" | "json" | "pdf" | "audio" | "video" | "text" | "binary",
+    "category": "image_screenshot" | "json_flat_structured" | "pdf_scanned" | etc.,
+    "subcategories": ["image_jpeg", "image_landscape"],  # Multiple tags
+    "confidence": 0.87,  # 0.0 - 1.0
 }
+
+Features:
+- 15+ image categories (screenshot, scanned_doc, photo, meme, AI-gen, etc.)
+- 5 JSON categories (flat_structured, nested, unstructured, etc.)
+- 9 PDF categories (text_doc, scanned, form, tables, slides, etc.)
+- 5 audio categories (music, voice_note, podcast, etc.)
+- 5 video categories (youtube, screen_recording, portrait, etc.)
+- Fallback: Extension-based grouping (.md_group, .mp3_group, etc.)
 """
 
 import os
 import json
+import re
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
 
 # ============================================================================
-# MASTER EXTENSION MAP - Single source of truth
+# EXTENSION TO TYPE MAPPING
 # ============================================================================
 
 EXTENSION_TYPE_MAP = {
-    # PDF Documents
-    '.pdf': ('pdf', 'document'),
+    # PDF
+    '.pdf': 'pdf',
     
-    # Data Formats
-    '.json': ('json', 'data'),
-    '.jsonl': ('json', 'data'),
-    '.csv': ('text', 'tabular'),
-    '.tsv': ('text', 'tabular'),
-    '.xml': ('text', 'structured'),
-    '.yaml': ('text', 'config'),
-    '.yml': ('text', 'config'),
-    '.toml': ('text', 'config'),
+    # Data
+    '.json': 'json',
+    '.jsonl': 'json',
+    '.csv': 'text',
+    '.tsv': 'text',
+    '.xml': 'text',
     
     # Documents
-    '.txt': ('text', 'document'),
-    '.md': ('text', 'markdown'),
-    '.rtf': ('text', 'document'),
-    '.doc': ('binary', 'document'),
-    '.docx': ('binary', 'document'),
-    
-    # Spreadsheets
-    '.xlsx': ('binary', 'spreadsheet'),
-    '.xls': ('binary', 'spreadsheet'),
+    '.txt': 'text',
+    '.md': 'text',
+    '.rtf': 'text',
+    '.doc': 'binary',
+    '.docx': 'binary',
     
     # Images
-    '.jpg': ('image', 'raster'),
-    '.jpeg': ('image', 'raster'),
-    '.png': ('image', 'raster'),
-    '.gif': ('image', 'animated'),
-    '.bmp': ('image', 'raster'),
-    '.svg': ('image', 'vector'),
-    '.webp': ('image', 'raster'),
-    '.tiff': ('image', 'raster'),
-    '.tif': ('image', 'raster'),
-    '.ico': ('image', 'icon'),
+    '.jpg': 'image',
+    '.jpeg': 'image',
+    '.png': 'image',
+    '.gif': 'image',
+    '.bmp': 'image',
+    '.svg': 'image',
+    '.webp': 'image',
+    '.tiff': 'image',
+    '.tif': 'image',
     
     # Audio
-    '.mp3': ('audio', 'compressed'),
-    '.m4a': ('audio', 'compressed'),
-    '.wav': ('audio', 'uncompressed'),
-    '.flac': ('audio', 'lossless'),
-    '.aac': ('audio', 'compressed'),
-    '.ogg': ('audio', 'compressed'),
-    '.wma': ('audio', 'compressed'),
+    '.mp3': 'audio',
+    '.m4a': 'audio',
+    '.wav': 'audio',
+    '.flac': 'audio',
+    '.aac': 'audio',
+    '.ogg': 'audio',
+    '.opus': 'audio',
+    '.wma': 'audio',
     
     # Video
-    '.mp4': ('video', 'compressed'),
-    '.mov': ('video', 'compressed'),
-    '.avi': ('video', 'compressed'),
-    '.mkv': ('video', 'container'),
-    '.wmv': ('video', 'compressed'),
-    '.flv': ('video', 'streaming'),
-    '.webm': ('video', 'streaming'),
+    '.mp4': 'video',
+    '.mov': 'video',
+    '.avi': 'video',
+    '.mkv': 'video',
+    '.wmv': 'video',
+    '.flv': 'video',
+    '.webm': 'video',
+    '.m4v': 'video',
     
     # Code
-    '.py': ('text', 'code'),
-    '.js': ('text', 'code'),
-    '.ts': ('text', 'code'),
-    '.jsx': ('text', 'code'),
-    '.tsx': ('text', 'code'),
-    '.cpp': ('text', 'code'),
-    '.c': ('text', 'code'),
-    '.h': ('text', 'code'),
-    '.hpp': ('text', 'code'),
-    '.java': ('text', 'code'),
-    '.go': ('text', 'code'),
-    '.rs': ('text', 'code'),
-    '.rb': ('text', 'code'),
-    '.php': ('text', 'code'),
-    
-    # Web
-    '.html': ('text', 'web'),
-    '.htm': ('text', 'web'),
-    '.css': ('text', 'stylesheet'),
-    '.scss': ('text', 'stylesheet'),
-    '.sass': ('text', 'stylesheet'),
-    '.less': ('text', 'stylesheet'),
+    '.py': 'text',
+    '.js': 'text',
+    '.ts': 'text',
+    '.html': 'text',
+    '.css': 'text',
     
     # Archives
-    '.zip': ('binary', 'archive'),
-    '.tar': ('binary', 'archive'),
-    '.gz': ('binary', 'archive'),
-    '.rar': ('binary', 'archive'),
-    '.7z': ('binary', 'archive'),
+    '.zip': 'binary',
+    '.tar': 'binary',
+    '.gz': 'binary',
+    '.rar': 'binary',
+    '.7z': 'binary',
 }
 
 
-# Magic bytes for file detection
-MAGIC_BYTES = {
-    b'%PDF': ('pdf', 'document'),
-    b'\x89PNG\r\n\x1a\n': ('image', 'raster'),
-    b'\xff\xd8\xff': ('image', 'raster'),
-    b'GIF87a': ('image', 'animated'),
-    b'GIF89a': ('image', 'animated'),
-    b'PK\x03\x04': ('binary', 'archive'),  # ZIP
-    b'Rar!\x1a\x07': ('binary', 'archive'),  # RAR
-}
-
-
-class UnifiedClassifier:
+class AdvancedClassifier:
     """
-    Single classification engine for ALL file types.
-    Replaces all previous categorization logic.
+    Advanced multi-level classification system.
+    Single entry point: classify_file()
     """
-    
-    def __init__(self):
-        self.confidence_threshold = 0.7
     
     def classify_file(
         self,
-        filename: str,
-        file_path: Optional[str] = None,
-        mime_type: Optional[str] = None,
-        file_bytes: Optional[bytes] = None,
-        analysis: Optional[Dict[str, Any]] = None
+        metadata: Dict[str, Any],
+        preview: Optional[Dict[str, Any]] = None,
+        full_path: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         MASTER CLASSIFICATION FUNCTION.
-        Single entry point for all file classification.
         
         Args:
-            filename: File name
-            file_path: Full path to file (optional)
-            mime_type: MIME type from upload (optional)
-            file_bytes: First 512 bytes for magic byte detection (optional)
-            analysis: Content analysis from processor (optional)
+            metadata: File metadata (filename, size, mime_type, etc.)
+            preview: Analysis results from processors (optional)
+            full_path: Full file path for additional checks (optional)
         
         Returns:
-            Classification result:
             {
                 "type": str,
-                "subtype": str,
                 "category": str,
-                "confidence": float,
-                "metadata": dict
+                "subcategories": [str],
+                "confidence": float
             }
         """
-        # Step 1: Normalize extension
-        ext = self._normalize_extension(filename)
+        filename = metadata.get("filename", "")
+        mime_type = metadata.get("mime_type", "")
+        file_size = metadata.get("size", 0)
         
-        # Step 2: Detect type via magic bytes (highest priority)
-        type_from_magic, subtype_from_magic = self._detect_from_magic_bytes(file_bytes)
+        # Extract extension
+        ext = Path(filename).suffix.lower()
         
-        # Step 3: Detect type from extension
-        type_from_ext, subtype_from_ext = self._detect_from_extension(ext)
+        # Detect primary type
+        file_type = self._detect_type(ext, mime_type, preview)
         
-        # Step 4: Detect type from MIME
-        type_from_mime, subtype_from_mime = self._detect_from_mime(mime_type)
+        # Route to type-specific classifier
+        if file_type == "image":
+            return self._classify_image(metadata, preview, ext)
+        elif file_type == "json":
+            return self._classify_json(metadata, preview)
+        elif file_type == "pdf":
+            return self._classify_pdf(metadata, preview)
+        elif file_type == "audio":
+            return self._classify_audio(metadata, preview, ext)
+        elif file_type == "video":
+            return self._classify_video(metadata, preview)
+        elif file_type == "text":
+            return self._classify_text(metadata, preview, ext)
+        else:
+            # Fallback: group by extension
+            return self._fallback_classification(ext, file_type)
+    
+    def _detect_type(self, ext: str, mime_type: str, preview: Optional[Dict]) -> str:
+        """Detect primary file type."""
+        # Check extension first
+        if ext in EXTENSION_TYPE_MAP:
+            return EXTENSION_TYPE_MAP[ext]
         
-        # Step 5: Resolve type conflicts (magic > extension > MIME)
-        file_type, subtype = self._resolve_type(
-            (type_from_magic, subtype_from_magic),
-            (type_from_ext, subtype_from_ext),
-            (type_from_mime, subtype_from_mime)
-        )
+        # Check MIME type
+        if mime_type:
+            if mime_type.startswith('image/'):
+                return 'image'
+            elif mime_type.startswith('audio/'):
+                return 'audio'
+            elif mime_type.startswith('video/'):
+                return 'video'
+            elif 'pdf' in mime_type.lower():
+                return 'pdf'
+            elif 'json' in mime_type.lower():
+                return 'json'
+            elif mime_type.startswith('text/'):
+                return 'text'
         
-        # Step 6: Get category from content analysis
-        category, confidence = self._get_category_from_analysis(
-            file_type, subtype, analysis
-        )
+        # Check preview for type hints
+        if preview:
+            if preview.get("type") in ["image", "audio", "video", "pdf", "json"]:
+                return preview["type"]
         
-        # Step 7: Build metadata
-        metadata = {
-            "extension": ext,
-            "detected_from": self._get_detection_source(
-                type_from_magic, type_from_ext, type_from_mime, file_type
-            ),
-            "mime_type": mime_type,
+        return 'binary'
+    
+    # ========================================================================
+    # IMAGE CLASSIFICATION - 15+ categories
+    # ========================================================================
+    
+    def _classify_image(
+        self, metadata: Dict, preview: Optional[Dict], ext: str
+    ) -> Dict[str, Any]:
+        """
+        Advanced image classification with EXIF, resolution, aspect ratio,
+        color variance, borders, and heuristics.
+        
+        Categories:
+        - image_screenshot
+        - image_scanned_document
+        - image_photo_realworld
+        - image_graphic_art
+        - image_digital_poster
+        - image_photo_document
+        - image_meme
+        - image_selfie_frontcamera
+        - image_ai_generated_like
+        - image_square, image_portrait, image_landscape, image_panorama
+        """
+        subcategories = []
+        confidence = 0.5
+        
+        # Add format subcategory
+        if ext in ['.jpg', '.jpeg']:
+            subcategories.append('image_jpeg')
+        elif ext == '.png':
+            subcategories.append('image_png')
+        elif ext == '.webp':
+            subcategories.append('image_webp')
+        elif ext == '.gif':
+            subcategories.append('image_gif')
+        elif ext in ['.tiff', '.tif']:
+            subcategories.append('image_tiff')
+        elif ext == '.bmp':
+            subcategories.append('image_bmp')
+        
+        if not preview:
+            return {
+                "type": "image",
+                "category": f"image{ext}",
+                "subcategories": subcategories,
+                "confidence": 0.3
+            }
+        
+        # Extract analysis data
+        width = preview.get("width", 0)
+        height = preview.get("height", 0)
+        has_exif = preview.get("has_exif", False)
+        has_alpha = preview.get("has_alpha", False)
+        file_size = metadata.get("size", 0)
+        
+        # Aspect ratio classification
+        aspect_ratio = width / height if height > 0 else 1.0
+        
+        if 0.95 <= aspect_ratio <= 1.05:
+            subcategories.append('image_square')
+        elif aspect_ratio < 0.7:
+            subcategories.append('image_portrait')
+        elif aspect_ratio > 1.8:
+            subcategories.append('image_panorama')
+        else:
+            subcategories.append('image_landscape')
+        
+        # Primary category detection
+        category = "image_photo"  # default
+        
+        # AI generated detection (check before screenshot to catch square AI images)
+        if self._is_ai_generated(preview, has_exif, width, height, ext):
+            category = "image_ai_generated_like"
+            confidence = 0.65
+        
+        # Screenshot detection
+        elif self._is_screenshot(preview, width, height, ext, file_size):
+            category = "image_screenshot"
+            confidence = 0.85
+        
+        # Scanned document detection
+        elif self._is_scanned_document(preview, width, height, aspect_ratio, file_size):
+            category = "image_scanned_document"
+            confidence = 0.80
+        
+        # Meme detection
+        elif self._is_meme(preview, width, height, has_alpha, ext):
+            category = "image_meme"
+            confidence = 0.75
+        
+        # Selfie/front camera detection
+        elif self._is_selfie(preview, has_exif, width, height):
+            category = "image_selfie_frontcamera"
+            confidence = 0.70
+        
+        # AI generated detection
+        elif self._is_ai_generated(preview, has_exif, width, height, ext):
+            category = "image_ai_generated_like"
+            confidence = 0.65
+        
+        # Digital poster/graphic art
+        elif self._is_digital_poster(preview, has_alpha, width, height, file_size):
+            category = "image_digital_poster"
+            confidence = 0.70
+        
+        elif self._is_graphic_art(preview, has_alpha, ext):
+            category = "image_graphic_art"
+            confidence = 0.65
+        
+        # Photo document (receipt, ID card, etc.)
+        elif self._is_photo_document(preview, aspect_ratio, width, height):
+            category = "image_photo_document"
+            confidence = 0.75
+        
+        # Real world photo (default if has EXIF)
+        elif has_exif:
+            category = "image_photo_realworld"
+            confidence = 0.80
+        
+        return {
+            "type": "image",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": confidence
         }
+    
+    def _is_screenshot(self, preview: Dict, w: int, h: int, ext: str, size: int) -> bool:
+        """Detect screenshot using heuristics."""
+        # Common screenshot resolutions
+        common_screens = [
+            (1920, 1080), (1366, 768), (1440, 900), (2560, 1440),
+            (3840, 2160), (1280, 720), (1600, 900), (2560, 1600)
+        ]
         
-        # Add type-specific metadata
-        if analysis:
-            metadata.update(self._extract_type_metadata(file_type, analysis))
+        # Check exact match with common screen sizes
+        if (w, h) in common_screens:
+            return True
+        
+        # PNG without EXIF is often screenshot
+        if ext == '.png' and not preview.get("has_exif", False):
+            # Large PNG files are often screenshots
+            if w >= 1000 and h >= 600:
+                return True
+        
+        # High color variance with sharp edges (from quality metrics)
+        quality = preview.get("quality", {})
+        if quality.get("sharpness", 0) > 70 and not preview.get("has_exif", False):
+            return True
+        
+        return False
+    
+    def _is_scanned_document(self, preview: Dict, w: int, h: int, ar: float, size: int) -> bool:
+        """Detect scanned documents."""
+        # A4/Letter aspect ratios: ~1.29-1.55
+        if 1.25 <= ar <= 1.6:
+            # Large dimensions typical of scans
+            if w >= 1500 or h >= 2000:
+                # Low color variance (mostly black/white text)
+                colors = preview.get("colors", {})
+                if colors.get("is_grayscale", False):
+                    return True
+                
+                # Low dominant color count
+                dom_colors = colors.get("dominant_colors", [])
+                if len(dom_colors) <= 3:
+                    return True
+        
+        # TIFF files are often scans
+        if preview.get("format", "").upper() in ["TIFF", "TIF"]:
+            return True
+        
+        return False
+    
+    def _is_meme(self, preview: Dict, w: int, h: int, has_alpha: bool, ext: str) -> bool:
+        """Detect memes using heuristics."""
+        # Memes are often square or near-square
+        aspect = w / h if h > 0 else 1.0
+        if 0.8 <= aspect <= 1.2:
+            # Small to medium size
+            if 300 <= w <= 1200 and 300 <= h <= 1200:
+                # JPEGs without EXIF
+                if ext in ['.jpg', '.jpeg'] and not preview.get("has_exif", False):
+                    return True
+        
+        return False
+    
+    def _is_selfie(self, preview: Dict, has_exif: bool, w: int, h: int) -> bool:
+        """Detect selfies (front camera photos)."""
+        if not has_exif:
+            return False
+        
+        # Portrait orientation
+        if h > w:
+            # Mobile photo dimensions
+            if 1000 <= w <= 5000 and 1500 <= h <= 8000:
+                # Could check EXIF for front camera flag if available
+                return True
+        
+        return False
+    
+    def _is_ai_generated(self, preview: Dict, has_exif: bool, w: int, h: int, ext: str) -> bool:
+        """Detect AI-generated images."""
+        # AI images typically have no EXIF
+        if has_exif:
+            return False
+        
+        # Common AI generation sizes
+        ai_sizes = [
+            (512, 512), (768, 768), (1024, 1024),
+            (512, 768), (768, 512), (1024, 768), (768, 1024)
+        ]
+        
+        if (w, h) in ai_sizes:
+            return True
+        
+        # PNG or WEBP without EXIF, square-ish
+        aspect = w / h if h > 0 else 1.0
+        if ext in ['.png', '.webp'] and 0.6 <= aspect <= 1.4:
+            # Medium to large size
+            if 500 <= w <= 2048 and 500 <= h <= 2048:
+                return True
+        
+        return False
+    
+    def _is_digital_poster(self, preview: Dict, has_alpha: bool, w: int, h: int, size: int) -> bool:
+        """Detect digital posters."""
+        # Portrait orientation, large dimensions
+        if h > w and h >= 1000:
+            # Has transparency (PNG with alpha)
+            if has_alpha:
+                return True
+            
+            # Large file size for dimensions
+            pixels = w * h
+            if pixels > 0 and size / pixels > 0.5:  # High quality
+                return True
+        
+        return False
+    
+    def _is_graphic_art(self, preview: Dict, has_alpha: bool, ext: str) -> bool:
+        """Detect graphic art."""
+        # PNG with alpha channel
+        if ext == '.png' and has_alpha:
+            # Many distinct colors
+            colors = preview.get("colors", {})
+            dom_colors = colors.get("dominant_colors", [])
+            if len(dom_colors) >= 4:
+                return True
+        
+        # SVG is always graphic art
+        if ext == '.svg':
+            return True
+        
+        return False
+    
+    def _is_photo_document(self, preview: Dict, ar: float, w: int, h: int) -> bool:
+        """Detect photo documents (receipts, IDs, cards)."""
+        # Small rectangular images
+        if w < 1500 and h < 2000:
+            # Card-like aspect ratios
+            if 1.4 <= ar <= 1.7 or 0.58 <= ar <= 0.72:
+                return True
+        
+        return False
+    
+    # ========================================================================
+    # JSON CLASSIFICATION - 5 categories
+    # ========================================================================
+    
+    def _classify_json(self, metadata: Dict, preview: Optional[Dict]) -> Dict[str, Any]:
+        """
+        JSON classification with schema generation.
+        
+        Categories:
+        - json_flat_structured (SQL-ready with schema)
+        - json_semistructured
+        - json_nested
+        - json_unstructured
+        - json_invalid
+        """
+        if not preview:
+            return {
+                "type": "json",
+                "category": "json_unstructured",
+                "subcategories": [],
+                "confidence": 0.3
+            }
+        
+        # Check for parse errors
+        if preview.get("parse_error", False):
+            return {
+                "type": "json",
+                "category": "json_invalid",
+                "subcategories": ["json_parse_error"],
+                "confidence": 1.0
+            }
+        
+        shape = preview.get("shape", "unknown")
+        consistency = preview.get("field_consistency", 0.0)
+        max_depth = preview.get("max_depth", 0)
+        nested_ratio = preview.get("nested_ratio", 0.0)
+        record_count = preview.get("record_count", 0)
+        
+        subcategories = []
+        
+        # Flat structured: array of objects, high consistency, low depth
+        if shape == "array_of_objects":
+            if consistency >= 0.95 and max_depth <= 2 and nested_ratio < 0.3:
+                category = "json_flat_structured"
+                confidence = 0.95
+                subcategories.append("sql_ready")
+                
+                # Generate SQL schema hint
+                if preview.get("schema"):
+                    subcategories.append("has_schema")
+            
+            elif consistency >= 0.70:
+                category = "json_semistructured"
+                confidence = 0.80
+                subcategories.append("partial_schema")
+            
+            else:
+                category = "json_unstructured"
+                confidence = 0.70
+        
+        # Nested structures
+        elif max_depth > 3 or nested_ratio > 0.5:
+            category = "json_nested"
+            confidence = 0.85
+            subcategories.append(f"depth_{max_depth}")
+        
+        # Simple structures
+        elif shape in ["scalar", "array_of_scalars", "single_object"]:
+            if max_depth <= 1:
+                category = "json_flat_structured"
+                confidence = 0.75
+            else:
+                category = "json_nested"
+                confidence = 0.70
+        
+        else:
+            category = "json_unstructured"
+            confidence = 0.60
+        
+        return {
+            "type": "json",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": confidence
+        }
+    
+    # ========================================================================
+    # PDF CLASSIFICATION - 9 categories
+    # ========================================================================
+    
+    def _classify_pdf(self, metadata: Dict, preview: Optional[Dict]) -> Dict[str, Any]:
+        """
+        Advanced PDF classification.
+        
+        Categories:
+        - pdf_text_document
+        - pdf_scanned
+        - pdf_form
+        - pdf_with_images
+        - pdf_with_tables
+        - pdf_ebook_layout
+        - pdf_presentation
+        - pdf_slides
+        - pdf_receipt
+        """
+        if not preview:
+            return {
+                "type": "pdf",
+                "category": "pdf_document",
+                "subcategories": [],
+                "confidence": 0.3
+            }
+        
+        subcategories = []
+        confidence = 0.5
+        
+        is_scanned = preview.get("is_scanned", False)
+        has_forms = preview.get("has_forms", False)
+        image_ratio = preview.get("image_ratio", 0.0)
+        text_length = preview.get("text_length", 0)
+        page_count = preview.get("page_count", 1)
+        
+        # Form detection (highest priority)
+        if has_forms:
+            category = "pdf_form"
+            confidence = 0.95
+            subcategories.append("interactive_form")
+        
+        # Scanned document
+        elif is_scanned:
+            category = "pdf_scanned"
+            confidence = 0.90
+            subcategories.append("ocr_applied")
+        
+        # Receipt detection (small, portrait, low page count)
+        elif page_count <= 2 and text_length < 3000:
+            if self._is_pdf_receipt(preview):
+                category = "pdf_receipt"
+                confidence = 0.85
+                subcategories.append("short_document")
+        
+        # Presentation/slides (multiple pages, high image ratio)
+        elif page_count >= 5 and image_ratio > 0.3:
+            if self._is_pdf_slides(preview, page_count):
+                category = "pdf_slides"
+                confidence = 0.80
+                subcategories.append(f"pages_{page_count}")
+            else:
+                category = "pdf_presentation"
+                confidence = 0.75
+        
+        # Ebook layout detection (many pages, specific formatting)
+        elif page_count >= 50:
+            if self._is_pdf_ebook(preview, page_count, text_length):
+                category = "pdf_ebook_layout"
+                confidence = 0.80
+                subcategories.append("long_document")
+        
+        # Tables detection
+        elif self._has_tables(preview):
+            category = "pdf_with_tables"
+            confidence = 0.75
+            subcategories.append("structured_data")
+        
+        # Image-heavy PDF
+        elif image_ratio > 0.4:
+            category = "pdf_with_images"
+            confidence = 0.75
+            subcategories.append(f"images_{int(image_ratio*100)}pct")
+        
+        # Default: text document
+        else:
+            category = "pdf_text_document"
+            confidence = 0.70
+            subcategories.append("primarily_text")
+        
+        return {
+            "type": "pdf",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": confidence
+        }
+    
+    def _is_pdf_receipt(self, preview: Dict) -> bool:
+        """Detect receipt PDFs."""
+        text = preview.get("text_content", "").lower()
+        
+        # Receipt keywords
+        receipt_keywords = [
+            "total", "subtotal", "tax", "receipt", "invoice",
+            "payment", "transaction", "qty", "amount", "cashier"
+        ]
+        
+        matches = sum(1 for kw in receipt_keywords if kw in text)
+        return matches >= 3
+    
+    def _is_pdf_slides(self, preview: Dict, page_count: int) -> bool:
+        """Detect presentation slides."""
+        # Slides typically have consistent page sizes, minimal text per page
+        text_length = preview.get("text_length", 0)
+        avg_text_per_page = text_length / page_count if page_count > 0 else 0
+        
+        # Slides have less text per page (< 500 chars avg)
+        if avg_text_per_page < 500:
+            return True
+        
+        return False
+    
+    def _is_pdf_ebook(self, preview: Dict, page_count: int, text_length: int) -> bool:
+        """Detect ebook-style PDFs."""
+        # Ebooks have high text density
+        avg_text_per_page = text_length / page_count if page_count > 0 else 0
+        
+        # Ebooks: > 1500 chars per page, many pages
+        if page_count >= 50 and avg_text_per_page > 1500:
+            return True
+        
+        return False
+    
+    def _has_tables(self, preview: Dict) -> bool:
+        """Detect tables in PDF."""
+        # Look for table indicators in text
+        text = preview.get("text_content", "").lower()
+        
+        # Table keywords/patterns
+        table_indicators = [
+            "table", "row", "column", "header",
+            "|", "┃", "│", "─", "━"
+        ]
+        
+        matches = sum(1 for ind in table_indicators if ind in text)
+        return matches >= 2
+    
+    # ========================================================================
+    # AUDIO CLASSIFICATION - 5 categories
+    # ========================================================================
+    
+    def _classify_audio(
+        self, metadata: Dict, preview: Optional[Dict], ext: str
+    ) -> Dict[str, Any]:
+        """
+        Audio classification using metadata.
+        
+        Categories:
+        - audio_music
+        - audio_voice_note
+        - audio_whatsapp_voice
+        - audio_podcast_like
+        - audio_recording
+        """
+        subcategories = []
+        confidence = 0.5
+        
+        # Add format subcategory
+        if ext == '.mp3':
+            subcategories.append('audio_mp3')
+        elif ext == '.m4a':
+            subcategories.append('audio_m4a')
+        elif ext == '.wav':
+            subcategories.append('audio_wav')
+        elif ext == '.opus':
+            subcategories.append('audio_opus')
+        
+        if not preview:
+            return {
+                "type": "audio",
+                "category": "audio_recording",
+                "subcategories": subcategories,
+                "confidence": 0.3
+            }
+        
+        duration = preview.get("duration_seconds", 0)
+        file_size = metadata.get("size", 0)
+        bitrate = file_size * 8 / duration if duration > 0 else 0
+        
+        # WhatsApp voice note detection
+        if self._is_whatsapp_voice(ext, duration, file_size):
+            category = "audio_whatsapp_voice"
+            confidence = 0.90
+            subcategories.append("voice_message")
+        
+        # Voice note (short audio, low quality)
+        elif duration < 120 and bitrate < 64000:
+            category = "audio_voice_note"
+            confidence = 0.80
+            subcategories.append("short_recording")
+        
+        # Podcast (long, medium quality)
+        elif duration > 600 and 64000 <= bitrate <= 192000:
+            category = "audio_podcast_like"
+            confidence = 0.75
+            subcategories.append("long_audio")
+        
+        # Music (medium duration, high quality)
+        elif 120 <= duration <= 600 and bitrate > 128000:
+            category = "audio_music"
+            confidence = 0.70
+            subcategories.append("high_quality")
+        
+        # Generic recording
+        else:
+            category = "audio_recording"
+            confidence = 0.60
+        
+        return {
+            "type": "audio",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": confidence
+        }
+    
+    def _is_whatsapp_voice(self, ext: str, duration: float, size: int) -> bool:
+        """Detect WhatsApp voice notes."""
+        # WhatsApp uses opus in short clips
+        if ext == '.opus' and duration < 180:
+            # Typical WhatsApp voice note sizes
+            if 5000 < size < 500000:  # 5KB - 500KB
+                return True
+        
+        # Also check m4a (older WhatsApp)
+        if ext == '.m4a' and duration < 180:
+            if 10000 < size < 1000000:
+                return True
+        
+        return False
+    
+    # ========================================================================
+    # VIDEO CLASSIFICATION - 5 categories
+    # ========================================================================
+    
+    def _classify_video(self, metadata: Dict, preview: Optional[Dict]) -> Dict[str, Any]:
+        """
+        Video classification using metadata and resolution.
+        
+        Categories:
+        - video_youtube_like
+        - video_screen_recording
+        - video_portrait
+        - video_landscape
+        - video_camera_clip
+        """
+        subcategories = []
+        confidence = 0.5
+        
+        if not preview:
+            return {
+                "type": "video",
+                "category": "video_clip",
+                "subcategories": subcategories,
+                "confidence": 0.3
+            }
+        
+        width = preview.get("width", 0)
+        height = preview.get("height", 0)
+        duration = preview.get("duration_seconds", 0)
+        fps = preview.get("fps", 0)
+        
+        # Aspect ratio
+        aspect = width / height if height > 0 else 1.0
+        
+        # Portrait video (mobile)
+        if aspect < 0.8:
+            category = "video_portrait"
+            confidence = 0.90
+            subcategories.append("vertical_video")
+        
+        # Screen recording detection (common resolutions)
+        elif self._is_screen_recording(width, height, fps):
+            category = "video_screen_recording"
+            confidence = 0.85
+            subcategories.append(f"{width}x{height}")
+        
+        # YouTube-like (16:9, high quality, medium-long duration)
+        elif self._is_youtube_like(width, height, duration, fps):
+            category = "video_youtube_like"
+            confidence = 0.80
+            subcategories.append("hd_video")
+        
+        # Camera clip (mobile camera formats)
+        elif self._is_camera_clip(width, height, duration):
+            category = "video_camera_clip"
+            confidence = 0.75
+            subcategories.append("mobile_recording")
+        
+        # Landscape (default)
+        else:
+            category = "video_landscape"
+            confidence = 0.65
+            subcategories.append("horizontal_video")
+        
+        return {
+            "type": "video",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": confidence
+        }
+    
+    def _is_screen_recording(self, w: int, h: int, fps: float) -> bool:
+        """Detect screen recordings."""
+        # Common screen recording resolutions
+        screen_sizes = [
+            (1920, 1080), (1280, 720), (2560, 1440),
+            (1366, 768), (1440, 900), (3840, 2160)
+        ]
+        
+        if (w, h) in screen_sizes:
+            # Screen recordings often have specific FPS
+            if 15 <= fps <= 30:
+                return True
+        
+        return False
+    
+    def _is_youtube_like(self, w: int, h: int, duration: float, fps: float) -> bool:
+        """Detect YouTube-style videos."""
+        # 16:9 aspect ratio
+        aspect = w / h if h > 0 else 1.0
+        
+        if 1.7 <= aspect <= 1.8:
+            # HD resolutions
+            if h >= 720:
+                # Typical video FPS
+                if 24 <= fps <= 60:
+                    # Medium to long duration
+                    if duration > 60:
+                        return True
+        
+        return False
+    
+    def _is_camera_clip(self, w: int, h: int, duration: float) -> bool:
+        """Detect mobile camera clips."""
+        # Common mobile resolutions
+        aspect = w / h if h > 0 else 1.0
+        
+        # 16:9 or 4:3 mobile video
+        if 1.3 <= aspect <= 1.8:
+            # Short to medium duration
+            if 5 <= duration <= 300:
+                # Mobile typical resolutions
+                if 720 <= h <= 2160:
+                    return True
+        
+        return False
+    
+    # ========================================================================
+    # TEXT CLASSIFICATION
+    # ========================================================================
+    
+    def _classify_text(
+        self, metadata: Dict, preview: Optional[Dict], ext: str
+    ) -> Dict[str, Any]:
+        """Basic text classification."""
+        subcategories = []
+        
+        if ext == '.md':
+            category = "text_markdown"
+            subcategories.append("markdown")
+        elif ext == '.csv':
+            category = "text_csv"
+            subcategories.append("tabular")
+        elif ext == '.xml':
+            category = "text_xml"
+            subcategories.append("structured")
+        elif ext in ['.py', '.js', '.ts', '.html', '.css']:
+            category = "text_code"
+            subcategories.append(f"code{ext}")
+        else:
+            category = "text_document"
+            subcategories.append("plain_text")
+        
+        return {
+            "type": "text",
+            "category": category,
+            "subcategories": subcategories,
+            "confidence": 0.90
+        }
+    
+    # ========================================================================
+    # FALLBACK CLASSIFICATION
+    # ========================================================================
+    
+    def _fallback_classification(self, ext: str, file_type: str) -> Dict[str, Any]:
+        """
+        Fallback: group by extension when classification fails.
+        Examples: .md_group, .mp3_group, .unknown_group
+        """
+        if ext:
+            category = f"{ext[1:]}_group"  # Remove leading dot
+        else:
+            category = "unknown_group"
         
         return {
             "type": file_type,
-            "subtype": subtype,
             "category": category,
-            "confidence": confidence,
-            "metadata": metadata
+            "subcategories": ["fallback"],
+            "confidence": 0.4
         }
-    
-    def _normalize_extension(self, filename: str) -> str:
-        """Extract and normalize file extension."""
-        ext = Path(filename).suffix.lower()
-        return ext if ext else ""
-    
-    def _detect_from_magic_bytes(
-        self, file_bytes: Optional[bytes]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Detect file type from magic bytes."""
-        if not file_bytes:
-            return None, None
-        
-        for magic, (ftype, subtype) in MAGIC_BYTES.items():
-            if file_bytes.startswith(magic):
-                return ftype, subtype
-        
-        # JSON detection (heuristic)
-        if file_bytes.strip().startswith((b'{', b'[')):
-            return 'json', 'data'
-        
-        return None, None
-    
-    def _detect_from_extension(self, ext: str) -> Tuple[Optional[str], Optional[str]]:
-        """Detect file type from extension."""
-        if ext in EXTENSION_TYPE_MAP:
-            return EXTENSION_TYPE_MAP[ext]
-        return None, None
-    
-    def _detect_from_mime(
-        self, mime_type: Optional[str]
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Detect file type from MIME type."""
-        if not mime_type:
-            return None, None
-        
-        mime_lower = mime_type.lower()
-        
-        # PDF
-        if 'pdf' in mime_lower:
-            return 'pdf', 'document'
-        
-        # JSON
-        if 'json' in mime_lower:
-            return 'json', 'data'
-        
-        # Images
-        if mime_lower.startswith('image/'):
-            if 'svg' in mime_lower:
-                return 'image', 'vector'
-            elif 'gif' in mime_lower:
-                return 'image', 'animated'
-            else:
-                return 'image', 'raster'
-        
-        # Audio
-        if mime_lower.startswith('audio/'):
-            return 'audio', 'compressed'
-        
-        # Video
-        if mime_lower.startswith('video/'):
-            return 'video', 'compressed'
-        
-        # Text
-        if mime_lower.startswith('text/'):
-            if 'html' in mime_lower:
-                return 'text', 'web'
-            elif 'css' in mime_lower:
-                return 'text', 'stylesheet'
-            else:
-                return 'text', 'document'
-        
-        return None, None
-    
-    def _resolve_type(
-        self,
-        magic_result: Tuple[Optional[str], Optional[str]],
-        ext_result: Tuple[Optional[str], Optional[str]],
-        mime_result: Tuple[Optional[str], Optional[str]]
-    ) -> Tuple[str, str]:
-        """
-        Resolve type conflicts.
-        Priority: magic bytes > extension > MIME > unknown
-        """
-        # Magic bytes has highest priority
-        if magic_result[0]:
-            return magic_result
-        
-        # Extension second
-        if ext_result[0]:
-            return ext_result
-        
-        # MIME third
-        if mime_result[0]:
-            return mime_result
-        
-        # Unknown
-        return 'binary', 'unknown'
-    
-    def _get_detection_source(
-        self,
-        type_from_magic: Optional[str],
-        type_from_ext: Optional[str],
-        type_from_mime: Optional[str],
-        final_type: str
-    ) -> str:
-        """Determine which detection method was used."""
-        if type_from_magic == final_type:
-            return 'magic_bytes'
-        elif type_from_ext == final_type:
-            return 'extension'
-        elif type_from_mime == final_type:
-            return 'mime_type'
-        else:
-            return 'heuristic'
-    
-    def _get_category_from_analysis(
-        self,
-        file_type: str,
-        subtype: str,
-        analysis: Optional[Dict[str, Any]]
-    ) -> Tuple[str, float]:
-        """
-        Get specific category from content analysis.
-        
-        Returns:
-            (category, confidence)
-        """
-        if not analysis:
-            # No analysis - use type-based default
-            return self._get_default_category(file_type, subtype), 0.5
-        
-        # Check if analysis provided a content_category
-        if 'content_category' in analysis:
-            category = analysis['content_category']
-            confidence = analysis.get('category_confidence', 0.8)
-            return category, confidence
-        
-        # Type-specific category extraction
-        if file_type == 'pdf':
-            return self._categorize_pdf(analysis)
-        elif file_type == 'json':
-            return self._categorize_json(analysis)
-        elif file_type == 'image':
-            return self._categorize_image(analysis)
-        elif file_type == 'video':
-            return self._categorize_video(analysis)
-        elif file_type == 'text':
-            return self._categorize_text(analysis)
-        else:
-            return self._get_default_category(file_type, subtype), 0.5
-    
-    def _get_default_category(self, file_type: str, subtype: str) -> str:
-        """Get default category based on type and subtype."""
-        if file_type == 'pdf':
-            return 'pdf_document'
-        elif file_type == 'json':
-            return 'json_data'
-        elif file_type == 'image':
-            return 'image_general'
-        elif file_type == 'video':
-            return 'video_general'
-        elif file_type == 'audio':
-            return 'audio_general'
-        elif file_type == 'text':
-            if subtype == 'code':
-                return 'text_code'
-            elif subtype == 'markdown':
-                return 'text_markdown'
-            else:
-                return 'text_document'
-        else:
-            return 'binary_unknown'
-    
-    # ========================================================================
-    # Type-Specific Categorization
-    # ========================================================================
-    
-    def _categorize_pdf(self, analysis: Dict[str, Any]) -> Tuple[str, float]:
-        """
-        PDF categorization based on content analysis.
-        
-        Categories:
-        - pdf_empty: No extractable content
-        - pdf_scanned: Scanned/OCR document
-        - pdf_text_document: Primarily text
-        - pdf_financial: Financial document
-        - pdf_report: Business report
-        - pdf_academic: Academic paper
-        - pdf_form: Contains form fields
-        - pdf_mixed: Mixed content
-        """
-        # Check for empty
-        text_length = analysis.get('text_length', 0)
-        if text_length < 10:
-            return 'pdf_empty', 1.0
-        
-        # Check if scanned
-        if analysis.get('is_scanned', False):
-            return 'pdf_scanned', 0.95
-        
-        # Check for form fields
-        if analysis.get('has_forms', False):
-            return 'pdf_form', 0.95
-        
-        # Analyze content categories (from analyzer)
-        categories = analysis.get('categories', {})
-        
-        if categories.get('financial', 0) > 0.3:
-            return 'pdf_financial', 0.9
-        
-        if categories.get('academic', 0) > 0.3:
-            return 'pdf_academic', 0.9
-        
-        if categories.get('report', 0) > 0.3:
-            return 'pdf_report', 0.85
-        
-        # Check image ratio
-        image_ratio = analysis.get('image_ratio', 0)
-        text_ratio = analysis.get('text_ratio', 1.0)
-        
-        if image_ratio > 0.5:
-            return 'pdf_mixed', 0.8
-        
-        if text_ratio > 0.8:
-            return 'pdf_text_document', 0.9
-        
-        # Default
-        return 'pdf_document', 0.7
-    
-    def _categorize_json(self, analysis: Dict[str, Any]) -> Tuple[str, float]:
-        """
-        JSON categorization based on structure analysis.
-        
-        Categories:
-        - json_invalid: Parse error
-        - json_structured_sql: Flat, consistent, SQL-ready
-        - json_structured_small_sql: Small structured dataset
-        - json_semi_structured: 60-95% consistency
-        - json_nested: Nested objects
-        - json_deep_nested: >3 levels deep
-        - json_mixed: Heterogeneous
-        - json_plain_object: Single object
-        - json_scalar: Single value
-        - json_array_of_scalars: Simple array
-        """
-        # Check for parse errors
-        if analysis.get('parse_error', False):
-            return 'json_invalid', 1.0
-        
-        # Get structure info
-        shape = analysis.get('shape', 'unknown')
-        
-        # Simple shapes
-        if shape == 'scalar':
-            return 'json_scalar', 1.0
-        
-        if shape == 'array_of_scalars':
-            return 'json_array_of_scalars', 1.0
-        
-        if shape == 'single_object':
-            max_depth = analysis.get('max_depth', 1)
-            if max_depth > 3:
-                return 'json_deep_nested', 0.95
-            elif max_depth > 1:
-                return 'json_nested', 0.9
-            else:
-                return 'json_plain_object', 0.95
-        
-        # Array of objects - complex analysis
-        if shape == 'array_of_objects':
-            consistency = analysis.get('field_consistency', 0)
-            max_depth = analysis.get('max_depth', 1)
-            nested_ratio = analysis.get('nested_ratio', 0)
-            record_count = analysis.get('record_count', 0)
-            
-            # SQL suitability check
-            is_sql_suitable = (
-                consistency >= 0.6 and
-                max_depth <= 2 and
-                nested_ratio < 0.3
-            )
-            
-            if is_sql_suitable:
-                if consistency >= 0.95:
-                    if record_count < 100:
-                        return 'json_structured_small_sql', 0.95
-                    else:
-                        return 'json_structured_sql', 0.95
-                elif consistency >= 0.60:
-                    return 'json_semi_structured', 0.85
-                else:
-                    return 'json_mixed', 0.75
-            else:
-                # NoSQL territory
-                if max_depth > 3:
-                    return 'json_deep_nested', 0.9
-                elif nested_ratio > 0.5:
-                    return 'json_nested', 0.85
-                else:
-                    return 'json_mixed', 0.7
-        
-        # Mixed/unknown
-        return 'json_mixed', 0.6
-    
-    def _categorize_image(self, analysis: Dict[str, Any]) -> Tuple[str, float]:
-        """Image categorization."""
-        # Get dimensions
-        width = analysis.get('width', 0)
-        height = analysis.get('height', 0)
-        
-        # Portrait vs landscape
-        if width > 0 and height > 0:
-            aspect_ratio = width / height
-            
-            if aspect_ratio < 0.75:
-                return 'image_portrait', 0.8
-            elif aspect_ratio > 1.5:
-                return 'image_landscape', 0.8
-        
-        # Check for screenshot indicators
-        if analysis.get('is_screenshot', False):
-            return 'image_screenshot', 0.9
-        
-        # Default
-        return 'image_general', 0.7
-    
-    def _categorize_video(self, analysis: Dict[str, Any]) -> Tuple[str, float]:
-        """Video categorization."""
-        duration = analysis.get('duration', 0)
-        
-        if duration > 0:
-            if duration < 120:  # < 2 minutes
-                return 'video_short', 0.9
-            elif duration < 600:  # 2-10 minutes
-                return 'video_medium', 0.9
-            else:
-                return 'video_long', 0.9
-        
-        # Check resolution
-        height = analysis.get('height', 0)
-        if height >= 2160:
-            return 'video_4k', 0.95
-        elif height >= 1080:
-            return 'video_fullhd', 0.95
-        elif height >= 720:
-            return 'video_hd', 0.95
-        
-        return 'video_general', 0.7
-    
-    def _categorize_text(self, analysis: Dict[str, Any]) -> Tuple[str, float]:
-        """Text file categorization."""
-        # Check if it's code
-        if analysis.get('is_code', False):
-            return 'text_code', 0.9
-        
-        # Check if it's markdown
-        if analysis.get('is_markdown', False):
-            return 'text_markdown', 0.95
-        
-        # Check if it's a log
-        if analysis.get('is_log', False):
-            return 'text_log', 0.85
-        
-        # Default
-        return 'text_document', 0.7
-    
-    def _extract_type_metadata(
-        self, file_type: str, analysis: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Extract type-specific metadata from analysis."""
-        metadata = {}
-        
-        if file_type == 'pdf':
-            metadata.update({
-                'page_count': analysis.get('page_count', 0),
-                'text_length': analysis.get('text_length', 0),
-                'image_count': analysis.get('image_count', 0),
-                'is_scanned': analysis.get('is_scanned', False),
-            })
-        
-        elif file_type == 'json':
-            metadata.update({
-                'record_count': analysis.get('record_count', 0),
-                'field_consistency': analysis.get('field_consistency', 0),
-                'max_depth': analysis.get('max_depth', 0),
-                'shape': analysis.get('shape', 'unknown'),
-            })
-        
-        elif file_type == 'image':
-            metadata.update({
-                'width': analysis.get('width', 0),
-                'height': analysis.get('height', 0),
-                'format': analysis.get('format', 'unknown'),
-            })
-        
-        elif file_type == 'video':
-            metadata.update({
-                'duration': analysis.get('duration', 0),
-                'width': analysis.get('width', 0),
-                'height': analysis.get('height', 0),
-                'fps': analysis.get('fps', 0),
-            })
-        
-        return metadata
 
 
 # ============================================================================
-# Global classifier instance
+# GLOBAL INSTANCE
 # ============================================================================
 
-_classifier = UnifiedClassifier()
-
+_classifier = AdvancedClassifier()
 
 def classify_file(
-    filename: str,
-    file_path: Optional[str] = None,
-    mime_type: Optional[str] = None,
-    file_bytes: Optional[bytes] = None,
-    analysis: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any],
+    preview: Optional[Dict[str, Any]] = None,
+    full_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Global classification function.
-    SINGLE ENTRY POINT for all file classification.
+    
+    Args:
+        metadata: File metadata dict
+        preview: Analysis results from processors
+        full_path: Full file path (optional)
+    
+    Returns:
+        {
+            "type": str,
+            "category": str,
+            "subcategories": [str],
+            "confidence": float
+        }
     """
-    return _classifier.classify_file(filename, file_path, mime_type, file_bytes, analysis)
+    return _classifier.classify_file(metadata, preview, full_path)

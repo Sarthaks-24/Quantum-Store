@@ -82,8 +82,8 @@ def save_analysis_with_classification(
     file_path: str
 ) -> Dict[str, Any]:
     """
-    UNIFIED CLASSIFICATION FUNCTION - Single entry point.
-    Uses new classifier.py for all categorization.
+    ADVANCED MULTI-LEVEL CLASSIFICATION - Single entry point.
+    Uses new classifier.py with subcategories and confidence scoring.
     
     Args:
         file_id: File identifier
@@ -95,33 +95,24 @@ def save_analysis_with_classification(
     Returns:
         Updated analysis with classification
     """
-    # Read file bytes for magic byte detection (first 512 bytes)
-    file_bytes = None
-    try:
-        with open(file_path, 'rb') as f:
-            file_bytes = f.read(512)
-    except:
-        pass
-    
-    # Run unified classification
+    # Run advanced classification with new interface
     classification = classify_file(
-        filename=metadata["filename"],
-        file_path=file_path,
-        mime_type=metadata.get("mime_type"),
-        file_bytes=file_bytes,
-        analysis=analysis  # Pass processor analysis for content-based classification
+        metadata=metadata,
+        preview=analysis,  # Pass processor analysis for content-based classification
+        full_path=file_path
     )
     
     print(f"[CLASSIFY] {metadata['filename']}")
     print(f"  Type: {classification['type']}")
-    print(f"  Subtype: {classification['subtype']}")
     print(f"  Category: {classification['category']}")
+    print(f"  Subcategories: {', '.join(classification.get('subcategories', []))}")
     print(f"  Confidence: {classification['confidence']:.2f}")
-    print(f"  Detected from: {classification['metadata'].get('detected_from')}")
     
-    # SINGLE category field - store full classification
+    # Store full classification with subcategories
     metadata["classification"] = classification
-    metadata["category"] = classification["category"]  # For backward compatibility/grouping
+    metadata["category"] = classification["category"]  # Primary category for grouping
+    metadata["subcategories"] = classification.get("subcategories", [])
+    metadata["confidence"] = classification["confidence"]
     store.save_metadata(file_id, metadata)
     
     # Add classification to analysis
@@ -130,7 +121,7 @@ def save_analysis_with_classification(
     # Save analysis
     store.save_analysis(file_id, file_type, analysis)
     
-    # Add to group by category (idempotent - uses index)
+    # Add to group by primary category (idempotent - uses index)
     store.add_file_to_group(file_id, classification["category"])
     
     return analysis
