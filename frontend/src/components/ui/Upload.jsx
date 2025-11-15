@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
   Upload as UploadIcon, 
@@ -15,6 +15,25 @@ import {
 } from 'lucide-react';
 import { uploadFiles } from '../../api';
 
+// Utility functions (pure, moved outside component)
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const getFileIcon = (type) => {
+  if (type.startsWith('image/')) return ImageIcon;
+  if (type.startsWith('video/')) return Video;
+  if (type.startsWith('audio/')) return Music;
+  if (type.includes('pdf')) return FileText;
+  if (type.includes('json')) return Database;
+  if (type.startsWith('text/')) return FileText;
+  return File;
+};
+
 const Upload = () => {
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
@@ -24,38 +43,24 @@ const Upload = () => {
   const [uploadResults, setUploadResults] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
 
-  const handleDragEnter = (e) => {
+  const handleDragEnter = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(true);
-  };
+  }, []);
 
-  const handleDragLeave = (e) => {
+  const handleDragLeave = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-  };
+  }, []);
 
-  const handleDragOver = (e) => {
+  const handleDragOver = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
-  };
+  }, []);
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    addFiles(files);
-  };
-
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
-    addFiles(files);
-  };
-
-  const addFiles = (files) => {
+  const addFiles = useCallback((files) => {
     const newFiles = files.map((file, index) => ({
       id: `${Date.now()}-${index}`,
       file,
@@ -64,13 +69,27 @@ const Upload = () => {
       type: file.type,
     }));
     setSelectedFiles(prev => [...prev, ...newFiles]);
-  };
+  }, []);
 
-  const removeFile = (id) => {
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    addFiles(files);
+  }, [addFiles]);
+
+  const handleFileSelect = useCallback((e) => {
+    const files = Array.from(e.target.files);
+    addFiles(files);
+  }, [addFiles]);
+
+  const removeFile = useCallback((id) => {
     setSelectedFiles(prev => prev.filter(f => f.id !== id));
-  };
+  }, []);
 
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
     if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
@@ -87,42 +106,31 @@ const Upload = () => {
 
     setUploadResults(results);
     setIsUploading(false);
-  };
+  }, [selectedFiles]);
 
-  const handleViewFile = (result) => {
+  const handleViewFile = useCallback(() => {
     // Navigate to files page with the uploaded file
     navigate('/files');
-  };
+  }, [navigate]);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSelectedFiles([]);
     setUploadProgress({});
     setUploadResults([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, []);
 
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = (type) => {
-    if (type.startsWith('image/')) return ImageIcon;
-    if (type.startsWith('video/')) return Video;
-    if (type.startsWith('audio/')) return Music;
-    if (type.includes('pdf')) return FileText;
-    if (type.includes('json')) return Database;
-    if (type.startsWith('text/')) return FileText;
-    return File;
-  };
-
-  const successCount = uploadResults.filter(r => r.success).length;
-  const failCount = uploadResults.filter(r => !r.success).length;
+  const successCount = useMemo(() => 
+    uploadResults.filter(r => r.success).length,
+    [uploadResults]
+  );
+  
+  const failCount = useMemo(() => 
+    uploadResults.filter(r => !r.success).length,
+    [uploadResults]
+  );
 
   return (
     <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">

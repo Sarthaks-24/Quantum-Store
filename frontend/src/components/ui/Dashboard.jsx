@@ -1,10 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { useNavigate, useLocation } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
   Files,
-  Upload,
   FolderOpen,
   Image,
   FileText,
@@ -15,29 +12,102 @@ import {
   Clock,
   HardDrive
 } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { fetchSummary, fetchRecentFiles, fetchFiles, computeWeeklyActivity, uploadFile, normalizeWeeklyActivity } from '../../api';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { fetchSummary, fetchRecentFiles, fetchFiles, computeWeeklyActivity, normalizeWeeklyActivity } from '../../api';
 import PreviewModal from './PreviewModal';
 
 const COLORS = ['#7c3aed', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
 
+// Extracted StatCard Component
+const StatCard = React.memo(({ stat, index }) => (
+  <motion.div
+    initial={{ y: 20, opacity: 0 }}
+    animate={{ y: 0, opacity: 1 }}
+    transition={{ delay: index * 0.1 }}
+    className="stat-card"
+  >
+    <div className="flex items-start justify-between mb-4">
+      <div className={`p-3 rounded-xl bg-${stat.color}-500/20`}>
+        <stat.icon className={`text-${stat.color}-400`} size={24} />
+      </div>
+      <span className="text-green-400 text-sm font-medium">{stat.change}</span>
+    </div>
+    <h3 className="text-white/60 text-sm mb-1">{stat.title}</h3>
+    <p className="text-3xl font-bold">{stat.value}</p>
+  </motion.div>
+));
+StatCard.displayName = 'StatCard';
+
+// Extracted FileCard Component
+const FileCard = React.memo(({ file, index, formatSize, onSelect }) => {
+  const getFileIcon = (type) => {
+    switch (type) {
+      case 'image': return Image;
+      case 'pdf': return FileText;
+      case 'video': return Video;
+      case 'audio': return Music;
+      case 'json': return Database;
+      default: return Files;
+    }
+  };
+
+  const Icon = getFileIcon(file.classification?.type);
+
+  const handleClick = useCallback(() => {
+    onSelect(file);
+  }, [file, onSelect]);
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(file);
+    }
+  }, [file, onSelect]);
+
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ delay: 0.5 + index * 0.05 }}
+      whileHover={{ scale: 1.02 }}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      className="glass-card-hover p-4 cursor-pointer"
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${file.filename}`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="p-2 bg-accent-indigo/20 rounded-lg">
+          <Icon size={20} className="text-accent-indigo" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-medium truncate">{file.filename || 'Unnamed'}</h4>
+          <p className="text-sm text-white/60 truncate">
+            {file.classification?.category || 'Uncategorized'}
+          </p>
+          <p className="text-xs text-white/40 mt-1">
+            {formatSize(file.size || 0)}
+          </p>
+        </div>
+      </div>
+    </motion.div>
+  );
+});
+FileCard.displayName = 'FileCard';
+
 const Dashboard = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [summary, setSummary] = useState(null);
   const [recentFiles, setRecentFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activityData, setActivityData] = useState([]);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = React.useRef(null);
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
       const [summaryData, filesData, allFiles] = await Promise.all([
@@ -72,45 +142,27 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileSelect = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-    try {
-      await uploadFile(file);
-      // Reload dashboard data after successful upload
-      await loadDashboardData();
-      alert(`File "${file.name}" uploaded successfully!`);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert(`Failed to upload file: ${error.message}`);
-    } finally {
-      setUploading(false);
-      // Reset input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+  }, []);
 
   // Format file size
-  const formatSize = (bytes) => {
+  const formatSize = useCallback((bytes) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  }, []);
 
-  // Stats cards data
-  const stats = [
+  const handleFileSelect = useCallback((file) => {
+    setSelectedFile(file);
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setSelectedFile(null);
+  }, []);
+
+  // Stats cards data (memoized)
+  const stats = useMemo(() => [
     {
       title: 'Total Files',
       value: summary?.totalFiles || 0,
@@ -139,16 +191,16 @@ const Dashboard = () => {
       color: 'green',
       change: '+5%'
     }
-  ];
+  ], [summary, formatSize]);
 
-  // Chart data
-  const typeDistribution = summary?.byType ? Object.entries(summary.byType).map(([name, value]) => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    value
-  })) : [];
-
-  const sidebar = [
-  ];
+  // Chart data (memoized)
+  const typeDistribution = useMemo(() => 
+    summary?.byType ? Object.entries(summary.byType).map(([name, value]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      value
+    })) : [],
+    [summary]
+  );
 
   return (
     <main className="flex-1 p-6 overflow-y-auto scrollbar-hide">
@@ -172,22 +224,7 @@ const Dashboard = () => {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           {stats.map((stat, index) => (
-            <motion.div
-              key={stat.title}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: index * 0.1 }}
-              className="stat-card"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className={`p-3 rounded-xl bg-${stat.color}-500/20`}>
-                  <stat.icon className={`text-${stat.color}-400`} size={24} />
-                </div>
-                <span className="text-green-400 text-sm font-medium">{stat.change}</span>
-              </div>
-              <h3 className="text-white/60 text-sm mb-1">{stat.title}</h3>
-              <p className="text-3xl font-bold">{stat.value}</p>
-            </motion.div>
+            <StatCard key={stat.title} stat={stat} index={index} />
           ))}
         </div>
 
@@ -283,44 +320,13 @@ const Dashboard = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {recentFiles.map((file, index) => (
-                <motion.div
+                <FileCard
                   key={file.id || index}
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.5 + index * 0.05 }}
-                  whileHover={{ scale: 1.02 }}
-                  onClick={() => setSelectedFile(file)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedFile(file);
-                    }
-                  }}
-                  className="glass-card-hover p-4 cursor-pointer"
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View ${file.filename}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-accent-indigo/20 rounded-lg">
-                      {file.classification?.type === 'image' && <Image size={20} className="text-accent-indigo" />}
-                      {file.classification?.type === 'pdf' && <FileText size={20} className="text-accent-indigo" />}
-                      {file.classification?.type === 'video' && <Video size={20} className="text-accent-indigo" />}
-                      {file.classification?.type === 'audio' && <Music size={20} className="text-accent-indigo" />}
-                      {file.classification?.type === 'json' && <Database size={20} className="text-accent-indigo" />}
-                      {!file.classification?.type && <Files size={20} className="text-accent-indigo" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium truncate">{file.filename || 'Unnamed'}</h4>
-                      <p className="text-sm text-white/60 truncate">
-                        {file.classification?.category || 'Uncategorized'}
-                      </p>
-                      <p className="text-xs text-white/40 mt-1">
-                        {formatSize(file.size || 0)}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
+                  file={file}
+                  index={index}
+                  formatSize={formatSize}
+                  onSelect={handleFileSelect}
+                />
               ))}
             </div>
           )}
@@ -330,7 +336,7 @@ const Dashboard = () => {
       {selectedFile && (
         <PreviewModal
           file={selectedFile}
-          onClose={() => setSelectedFile(null)}
+          onClose={handleClosePreview}
         />
       )}
     </main>

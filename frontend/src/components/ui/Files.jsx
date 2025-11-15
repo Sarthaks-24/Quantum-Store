@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Search, 
-  Filter,
   SortAsc,
   Image as ImageIcon,
   FileText,
@@ -17,6 +16,138 @@ import {
 import { fetchFiles } from '../../api';
 import PreviewModal from './PreviewModal';
 
+// Utility functions moved outside component (pure functions)
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const getFileIcon = (type) => {
+  switch (type) {
+    case 'image': return ImageIcon;
+    case 'pdf': return FileText;
+    case 'video': return Video;
+    case 'audio': return Music;
+    case 'json': return Database;
+    case 'text': return FileText;
+    default: return File;
+  }
+};
+
+// Extracted FileCard Component
+const FileCard = React.memo(({ file, index, onSelect }) => {
+  const FileIcon = getFileIcon(file.classification?.type);
+  const fileType = file.classification?.type || 'unknown';
+  const hasAnalytics = fileType !== 'unknown';
+
+  const handleClick = useCallback(() => {
+    onSelect(file);
+  }, [file, onSelect]);
+
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(file);
+    }
+  }, [file, onSelect]);
+
+  const handleAnalyticsClick = useCallback((e) => {
+    e.stopPropagation();
+    onSelect(file);
+  }, [file, onSelect]);
+
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ delay: index * 0.02 }}
+      whileHover={{ scale: 1.02 }}
+      className="glass-card-hover p-4 cursor-pointer group"
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${file.filename}`}
+    >
+      <div 
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        className="flex flex-col gap-3"
+      >
+        {/* File Icon Header */}
+        <div className="flex items-start justify-between">
+          <div className="p-3 bg-accent-indigo/20 rounded-xl">
+            <FileIcon size={28} className="text-accent-indigo" />
+          </div>
+          {file.classification?.confidence && (
+            <div className="px-2 py-1 bg-accent-teal/20 rounded-lg">
+              <span className="text-xs font-medium text-accent-teal">
+                {(file.classification.confidence * 100).toFixed(0)}%
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* File Info */}
+        <div className="flex-1 min-w-0">
+          <h4 className="font-medium truncate mb-1 text-base">{file.filename || 'Unnamed'}</h4>
+          <p className="text-sm text-white/60 truncate mb-3">
+            {file.classification?.category || 'Uncategorized'}
+          </p>
+          
+          {/* Tags */}
+          {file.classification?.subcategories && file.classification.subcategories.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-3">
+              {file.classification.subcategories.slice(0, 2).map((tag, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-0.5 bg-white/5 text-white/50 rounded text-xs"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Meta Information */}
+          <div className="flex flex-col gap-1 text-xs text-white/40">
+            <span className="flex items-center gap-1">
+              <HardDrive size={12} />
+              {formatSize(file.size)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Calendar size={12} />
+              {formatDate(file.uploaded_at || file.created_at)}
+            </span>
+          </div>
+        </div>
+
+        {/* Analytics Button */}
+        {hasAnalytics && (
+          <button
+            onClick={handleAnalyticsClick}
+            className="flex items-center justify-center gap-2 px-3 py-2 bg-accent-indigo/20 hover:bg-accent-indigo/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <BarChart3 size={14} />
+            <span className="text-xs font-medium">View Analytics</span>
+          </button>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+FileCard.displayName = 'FileCard';
+
 const Files = () => {
   const [files, setFiles] = useState([]);
   const [filteredFiles, setFilteredFiles] = useState([]);
@@ -28,15 +159,34 @@ const Files = () => {
   const [sortBy, setSortBy] = useState('newest');
   const [selectedFile, setSelectedFile] = useState(null);
 
+  // Debounce search query
+  const searchTimeoutRef = useRef(null);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
+
   useEffect(() => {
     loadFiles();
   }, []);
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [files, searchQuery, selectedType, selectedDateRange, selectedSizeRange, sortBy]);
+  }, [files, debouncedQuery, selectedType, selectedDateRange, selectedSizeRange, sortBy]);
 
-  const loadFiles = async () => {
+  const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchFiles();
@@ -46,14 +196,14 @@ const Files = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const applyFiltersAndSort = () => {
+  const applyFiltersAndSort = useCallback(() => {
     let result = [...files];
 
     // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (debouncedQuery) {
+      const query = debouncedQuery.toLowerCase();
       result = result.filter(file => 
         (file.filename || '').toLowerCase().includes(query)
       );
@@ -136,38 +286,26 @@ const Files = () => {
     }
 
     setFilteredFiles(result);
-  };
+  }, [files, debouncedQuery, selectedType, selectedDateRange, selectedSizeRange, sortBy]);
 
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
+  const handleSearchChange = useCallback((e) => {
+    setSearchQuery(e.target.value);
+  }, []);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  const handleFileSelect = useCallback((file) => {
+    setSelectedFile(file);
+  }, []);
 
-  const getFileIcon = (type) => {
-    switch (type) {
-      case 'image': return ImageIcon;
-      case 'pdf': return FileText;
-      case 'video': return Video;
-      case 'audio': return Music;
-      case 'json': return Database;
-      case 'text': return FileText;
-      default: return File;
-    }
-  };
+  const handleClosePreview = useCallback(() => {
+    setSelectedFile(null);
+  }, []);
 
-  const typeFilters = [
+  const handleNavigate = useCallback((newFile) => {
+    setSelectedFile(newFile);
+  }, []);
+
+  // Memoize type filters to avoid recalculation
+  const typeFilters = useMemo(() => [
     { value: 'all', label: 'All Types', count: files.length },
     { value: 'image', label: 'Images', count: files.filter(f => f.classification?.type === 'image').length },
     { value: 'pdf', label: 'PDFs', count: files.filter(f => f.classification?.type === 'pdf').length },
@@ -176,7 +314,7 @@ const Files = () => {
     { value: 'video', label: 'Videos', count: files.filter(f => f.classification?.type === 'video').length },
     { value: 'audio', label: 'Audio', count: files.filter(f => f.classification?.type === 'audio').length },
     { value: 'unknown', label: 'Other', count: files.filter(f => !f.classification?.type || f.classification?.type === 'unknown').length },
-  ];
+  ], [files]);
 
   return (
     <div className="flex-1 p-6 overflow-y-auto scrollbar-hide">
@@ -206,7 +344,7 @@ const Files = () => {
                 type="text"
                 placeholder="Search files by name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={handleSearchChange}
                 className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-indigo transition-colors"
               />
             </div>
@@ -303,98 +441,14 @@ const Files = () => {
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredFiles.map((file, index) => {
-            const FileIcon = getFileIcon(file.classification?.type);
-            const fileType = file.classification?.type || 'unknown';
-            const hasAnalytics = fileType !== 'unknown';
-            
-            return (
-              <motion.div
-                key={file.id || index}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: index * 0.02 }}
-                whileHover={{ scale: 1.02 }}
-                className="glass-card-hover p-4 cursor-pointer group"
-                role="button"
-                tabIndex={0}
-                aria-label={`View ${file.filename}`}
-              >
-                <div 
-                  onClick={() => setSelectedFile(file)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setSelectedFile(file);
-                    }
-                  }}
-                  className="flex flex-col gap-3"
-                >
-                  {/* File Icon Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="p-3 bg-accent-indigo/20 rounded-xl">
-                      <FileIcon size={28} className="text-accent-indigo" />
-                    </div>
-                    {file.classification?.confidence && (
-                      <div className="px-2 py-1 bg-accent-teal/20 rounded-lg">
-                        <span className="text-xs font-medium text-accent-teal">
-                          {(file.classification.confidence * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* File Info */}
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate mb-1 text-base">{file.filename || 'Unnamed'}</h4>
-                    <p className="text-sm text-white/60 truncate mb-3">
-                      {file.classification?.category || 'Uncategorized'}
-                    </p>
-                    
-                    {/* Tags */}
-                    {file.classification?.subcategories && file.classification.subcategories.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {file.classification.subcategories.slice(0, 2).map((tag, i) => (
-                          <span
-                            key={i}
-                            className="px-2 py-0.5 bg-white/5 text-white/50 rounded text-xs"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Meta Information */}
-                    <div className="flex flex-col gap-1 text-xs text-white/40">
-                      <span className="flex items-center gap-1">
-                        <HardDrive size={12} />
-                        {formatSize(file.size)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Calendar size={12} />
-                        {formatDate(file.uploaded_at || file.created_at)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Analytics Button */}
-                  {hasAnalytics && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFile(file);
-                      }}
-                      className="flex items-center justify-center gap-2 px-3 py-2 bg-accent-indigo/20 hover:bg-accent-indigo/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    >
-                      <BarChart3 size={14} />
-                      <span className="text-xs font-medium">View Analytics</span>
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
+          {filteredFiles.map((file, index) => (
+            <FileCard
+              key={file.id || index}
+              file={file}
+              index={index}
+              onSelect={handleFileSelect}
+            />
+          ))}
         </div>
       )}
 
@@ -403,8 +457,8 @@ const Files = () => {
         <PreviewModal
           file={selectedFile}
           files={filteredFiles}
-          onClose={() => setSelectedFile(null)}
-          onNavigate={(newFile) => setSelectedFile(newFile)}
+          onClose={handleClosePreview}
+          onNavigate={handleNavigate}
         />
       )}
     </div>

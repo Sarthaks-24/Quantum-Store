@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -16,12 +16,70 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  ExternalLink,
   ZoomIn,
   ZoomOut,
   RotateCcw
 } from 'lucide-react';
 import { fetchFilePreview, downloadFile, fetchFileAnalytics } from '../../api';
+
+// Utility functions (pure, moved outside component)
+const formatSize = (bytes) => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'Unknown';
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const isBase64Image = (str) => {
+  if (typeof str !== 'string') return false;
+  return str.startsWith('data:image/') || (str.length > 100 && /^[A-Za-z0-9+/]+=*$/.test(str.substring(0, 100)));
+};
+
+// Extracted ZoomControls Component
+const ZoomControls = React.memo(({ zoomLevel, onZoomIn, onZoomOut, onReset }) => (
+  <div className="absolute top-4 right-4 z-20 flex gap-2 bg-black/50 backdrop-blur-sm rounded-xl p-2">
+    <button
+      onClick={onZoomOut}
+      disabled={zoomLevel <= 0.5}
+      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      aria-label="Zoom Out"
+    >
+      <ZoomOut size={20} />
+    </button>
+    <div className="px-3 py-2 bg-white/10 rounded-lg min-w-[4rem] text-center">
+      <span className="text-sm font-medium">{Math.round(zoomLevel * 100)}%</span>
+    </div>
+    <button
+      onClick={onZoomIn}
+      disabled={zoomLevel >= 4.0}
+      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      aria-label="Zoom In"
+    >
+      <ZoomIn size={20} />
+    </button>
+    <button
+      onClick={onReset}
+      disabled={zoomLevel === 1}
+      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      aria-label="Reset Zoom"
+    >
+      <RotateCcw size={20} />
+    </button>
+  </div>
+));
+ZoomControls.displayName = 'ZoomControls';
 
 const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   const [activeTab, setActiveTab] = useState('preview');
@@ -40,8 +98,12 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   const imageContainerRef = useRef(null);
   const touchStartRef = useRef({ distance: 0, center: { x: 0, y: 0 } });
 
-  // Find current file index
-  const currentIndex = files.findIndex(f => f.id === file.id);
+  // Memoized calculations
+  const currentIndex = useMemo(() => 
+    files.findIndex(f => f.id === file.id), 
+    [files, file.id]
+  );
+  
   const hasPrevious = currentIndex > 0;
   const hasNext = currentIndex < files.length - 1;
 
@@ -76,7 +138,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     }
   }, [activeTab]);
 
-  const loadPreview = async () => {
+  const loadPreview = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchFilePreview(file.id);
@@ -86,9 +148,9 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [file.id]);
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     // Use classification type or fall back to file_type
     const fileType = file.classification?.type || file.file_type;
     if (!fileType || fileType === 'unknown') {
@@ -106,9 +168,9 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     } finally {
       setLoadingAnalytics(false);
     }
-  };
+  }, [file.id, file.classification, file.file_type]);
 
-  const handleDownload = async () => {
+  const handleDownload = useCallback(async () => {
     setDownloading(true);
     try {
       await downloadFile(file.id, file.filename);
@@ -118,19 +180,19 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     } finally {
       setDownloading(false);
     }
-  };
+  }, [file.id, file.filename]);
 
   // Zoom and Pan functions
-  const resetZoom = () => {
+  const resetZoom = useCallback(() => {
     setZoomLevel(1);
     setPanPosition({ x: 0, y: 0 });
-  };
+  }, []);
 
-  const zoomIn = () => {
+  const zoomIn = useCallback(() => {
     setZoomLevel(prev => Math.min(prev + 0.25, 4.0));
-  };
+  }, []);
 
-  const zoomOut = () => {
+  const zoomOut = useCallback(() => {
     setZoomLevel(prev => {
       const newZoom = Math.max(prev - 0.25, 0.5);
       if (newZoom === 1) {
@@ -138,9 +200,9 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       }
       return newZoom;
     });
-  };
+  }, []);
 
-  const handleWheel = (e) => {
+  const handleWheel = useCallback((e) => {
     if (!imageContainerRef.current) return;
     
     e.preventDefault();
@@ -155,29 +217,29 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       // Zoom
       setZoomLevel(prev => Math.min(Math.max(prev + delta * multiplier, 0.5), 4.0));
     }
-  };
+  }, []);
 
-  const handleMouseDown = (e) => {
+  const handleMouseDown = useCallback((e) => {
     if (zoomLevel <= 1) return;
     e.preventDefault();
     setIsDragging(true);
     setDragStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
-  };
+  }, [zoomLevel, panPosition]);
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = useCallback((e) => {
     if (!isDragging) return;
     e.preventDefault();
     setPanPosition({
       x: e.clientX - dragStart.x,
       y: e.clientY - dragStart.y
     });
-  };
+  }, [isDragging, dragStart]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     setIsDragging(false);
-  };
+  }, []);
 
-  const handleTouchStart = (e) => {
+  const handleTouchStart = useCallback((e) => {
     if (e.touches.length === 2) {
       // Two-finger pinch
       const touch1 = e.touches[0];
@@ -199,9 +261,9 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       setIsDragging(true);
       setDragStart({ x: touch.clientX - panPosition.x, y: touch.clientY - panPosition.y });
     }
-  };
+  }, [zoomLevel, panPosition]);
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = useCallback((e) => {
     if (e.touches.length === 2) {
       // Pinch zoom
       e.preventDefault();
@@ -226,30 +288,11 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
         y: touch.clientY - dragStart.y
       });
     }
-  };
+  }, [isDragging, dragStart, zoomLevel]);
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     setIsDragging(false);
-  };
-
-  const formatSize = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Unknown';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  }, []);
 
   const getFileIcon = () => {
     // Use classification type or fall back to file_type
@@ -301,45 +344,18 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       }));
     };
 
-    // Check if string is Base64 image data
-    const isBase64Image = (value) => {
-      if (typeof value !== 'string') return false;
-      // Check if it looks like Base64 (contains only valid Base64 characters and is reasonably long)
-      const base64Pattern = /^[A-Za-z0-9+/=]{100,}$/;
-      return base64Pattern.test(value.replace(/\s/g, ''));
-    };
-
     const renderValue = (key, value) => {
       // Special handling for preview field (Base64 image)
       if ((key === 'preview' || key.includes('thumbnail') || key.includes('image')) && isBase64Image(value)) {
         return (
           <div className="mt-2 relative">
-            {/* Zoom Controls */}
-            <div className="absolute top-2 right-2 z-10 backdrop-blur-md bg-white/10 rounded-xl shadow-lg px-3 py-1 flex gap-2">
-              <button
-                onClick={zoomIn}
-                disabled={zoomLevel >= 4.0}
-                className="p-1 hover:bg-white/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Zoom in"
-              >
-                <ZoomIn size={18} />
-              </button>
-              <button
-                onClick={zoomOut}
-                disabled={zoomLevel <= 0.5}
-                className="p-1 hover:bg-white/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Zoom out"
-              >
-                <ZoomOut size={18} />
-              </button>
-              <button
-                onClick={resetZoom}
-                className="p-1 hover:bg-white/20 rounded transition-colors"
-                aria-label="Reset zoom"
-              >
-                <RotateCcw size={18} />
-              </button>
-            </div>
+            {/* Zoom Controls - Using extracted component */}
+            <ZoomControls 
+              zoomLevel={zoomLevel}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onReset={resetZoom}
+            />
             
             {/* Image Container with Pan/Zoom */}
             <div 
