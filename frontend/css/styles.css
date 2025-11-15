@@ -1,0 +1,26 @@
+/* 
+ * QuantumStore Frontend Styles
+ * TODO: Implement comprehensive styling
+ */
+
+:root {
+    --primary-color: #0066cc;
+    --secondary-color: #333333;
+    --background-color: #f5f5f5;
+    --border-color: #dddddd;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--background-color);
+}
+
+/* TODO: Add comprehensive styling for:
+ * - Upload interface
+ * - File listings
+ * - Group visualizations
+ * - Search results
+ * - Metadata displays
+ */
