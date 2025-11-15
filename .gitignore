@@ -35,6 +35,7 @@ ENV/
 .DS_Store
 
 # Data files
+data
 data/raw/uploads/*
 !data/raw/uploads/.gitkeep
 data/processed/metadata/*
