@@ -13,11 +13,14 @@ import {
   Tag,
   AlertCircle,
   BarChart3,
-  Eye
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink
 } from 'lucide-react';
 import { fetchFilePreview, downloadFile, fetchFileAnalytics } from '../../api';
 
-const PreviewModal = ({ file, onClose }) => {
+const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   const [activeTab, setActiveTab] = useState('preview');
   const [preview, setPreview] = useState(null);
   const [analytics, setAnalytics] = useState(null);
@@ -25,20 +28,34 @@ const PreviewModal = ({ file, onClose }) => {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  // Find current file index
+  const currentIndex = files.findIndex(f => f.id === file.id);
+  const hasPrevious = currentIndex > 0;
+  const hasNext = currentIndex < files.length - 1;
+
   useEffect(() => {
     loadPreview();
+    // Reset analytics when file changes
+    setAnalytics(null);
+    setActiveTab('preview');
   }, [file.id]);
 
   useEffect(() => {
-    const handleEscape = (e) => {
+    const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         onClose();
+      } else if (e.key === 'ArrowLeft' && hasPrevious && onNavigate) {
+        e.preventDefault();
+        onNavigate(files[currentIndex - 1]);
+      } else if (e.key === 'ArrowRight' && hasNext && onNavigate) {
+        e.preventDefault();
+        onNavigate(files[currentIndex + 1]);
       }
     };
     
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, currentIndex, hasPrevious, hasNext, files, onNavigate]);
 
   useEffect(() => {
     if (activeTab === 'analytics' && !analytics && !loadingAnalytics) {
@@ -214,7 +231,12 @@ const PreviewModal = ({ file, onClose }) => {
                   <FileIconComponent size={28} className="text-accent-indigo" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h2 className="text-2xl font-bold truncate">{file.filename}</h2>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-2xl font-bold truncate">{file.filename}</h2>
+                    <span className="px-2 py-1 bg-white/5 rounded text-xs text-white/50 capitalize">
+                      {file.classification?.type || 'unknown'}
+                    </span>
+                  </div>
                   <p className="text-white/60 text-sm mt-1">
                     {file.classification?.category || 'Uncategorized'}
                   </p>
@@ -232,13 +254,48 @@ const PreviewModal = ({ file, onClose }) => {
                   )}
                 </div>
               </div>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-white/10 rounded-xl transition-colors"
-                aria-label="Close preview"
-              >
-                <X size={24} />
-              </button>
+              
+              {/* Navigation and Close Buttons */}
+              <div className="flex items-center gap-2">
+                {files.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => hasPrevious && onNavigate && onNavigate(files[currentIndex - 1])}
+                      disabled={!hasPrevious}
+                      className={`p-2 rounded-xl transition-colors ${
+                        hasPrevious 
+                          ? 'hover:bg-white/10 text-white' 
+                          : 'text-white/30 cursor-not-allowed'
+                      }`}
+                      aria-label="Previous file"
+                    >
+                      <ChevronLeft size={24} />
+                    </button>
+                    <span className="text-white/40 text-sm">
+                      {currentIndex + 1} / {files.length}
+                    </span>
+                    <button
+                      onClick={() => hasNext && onNavigate && onNavigate(files[currentIndex + 1])}
+                      disabled={!hasNext}
+                      className={`p-2 rounded-xl transition-colors ${
+                        hasNext 
+                          ? 'hover:bg-white/10 text-white' 
+                          : 'text-white/30 cursor-not-allowed'
+                      }`}
+                      aria-label="Next file"
+                    >
+                      <ChevronRight size={24} />
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                  aria-label="Close preview"
+                >
+                  <X size={24} />
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}

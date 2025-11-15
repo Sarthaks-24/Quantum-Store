@@ -11,7 +11,8 @@ import {
   Database,
   File,
   Calendar,
-  HardDrive
+  HardDrive,
+  BarChart3
 } from 'lucide-react';
 import { fetchFiles } from '../../api';
 import PreviewModal from './PreviewModal';
@@ -22,6 +23,8 @@ const Files = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
+  const [selectedDateRange, setSelectedDateRange] = useState('all');
+  const [selectedSizeRange, setSelectedSizeRange] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [selectedFile, setSelectedFile] = useState(null);
 
@@ -31,7 +34,7 @@ const Files = () => {
 
   useEffect(() => {
     applyFiltersAndSort();
-  }, [files, searchQuery, selectedType, sortBy]);
+  }, [files, searchQuery, selectedType, selectedDateRange, selectedSizeRange, sortBy]);
 
   const loadFiles = async () => {
     setLoading(true);
@@ -63,6 +66,39 @@ const Files = () => {
       );
     }
 
+    // Apply date range filter
+    if (selectedDateRange !== 'all') {
+      const now = new Date();
+      const ranges = {
+        today: 1,
+        week: 7,
+        month: 30
+      };
+      const daysAgo = ranges[selectedDateRange];
+      if (daysAgo) {
+        const cutoffDate = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        result = result.filter(file => {
+          const fileDate = new Date(file.uploaded_at || file.created_at);
+          return fileDate >= cutoffDate;
+        });
+      }
+    }
+
+    // Apply size range filter
+    if (selectedSizeRange !== 'all') {
+      const MB = 1024 * 1024;
+      const ranges = {
+        small: [0, MB],
+        medium: [MB, 10 * MB],
+        large: [10 * MB, Infinity]
+      };
+      const [min, max] = ranges[selectedSizeRange] || [0, Infinity];
+      result = result.filter(file => {
+        const size = file.size || 0;
+        return size >= min && size < max;
+      });
+    }
+
     // Apply sorting
     switch (sortBy) {
       case 'newest':
@@ -79,12 +115,20 @@ const Files = () => {
           return dateA - dateB;
         });
         break;
-      case 'size':
+      case 'largest':
         result.sort((a, b) => (b.size || 0) - (a.size || 0));
         break;
-      case 'name':
+      case 'smallest':
+        result.sort((a, b) => (a.size || 0) - (b.size || 0));
+        break;
+      case 'name-asc':
         result.sort((a, b) => 
           (a.filename || '').localeCompare(b.filename || '')
+        );
+        break;
+      case 'name-desc':
+        result.sort((a, b) => 
+          (b.filename || '').localeCompare(a.filename || '')
         );
         break;
       default:
@@ -168,8 +212,33 @@ const Files = () => {
             </div>
           </div>
 
-          {/* Sort Dropdown */}
-          <div className="flex gap-3">
+          {/* Filter Dropdowns */}
+          <div className="flex flex-wrap gap-3">
+            {/* Date Range Filter */}
+            <select
+              value={selectedDateRange}
+              onChange={(e) => setSelectedDateRange(e.target.value)}
+              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer"
+            >
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="week">Last 7 Days</option>
+              <option value="month">Last 30 Days</option>
+            </select>
+
+            {/* Size Range Filter */}
+            <select
+              value={selectedSizeRange}
+              onChange={(e) => setSelectedSizeRange(e.target.value)}
+              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer"
+            >
+              <option value="all">All Sizes</option>
+              <option value="small">Small (&lt;1MB)</option>
+              <option value="medium">Medium (1-10MB)</option>
+              <option value="large">Large (&gt;10MB)</option>
+            </select>
+
+            {/* Sort Dropdown */}
             <div className="relative">
               <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
               <select
@@ -179,8 +248,10 @@ const Files = () => {
               >
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
-                <option value="size">Largest First</option>
-                <option value="name">A-Z</option>
+                <option value="largest">Largest First</option>
+                <option value="smallest">Smallest First</option>
+                <option value="name-asc">A → Z</option>
+                <option value="name-desc">Z → A</option>
               </select>
             </div>
           </div>
@@ -228,6 +299,8 @@ const Files = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredFiles.map((file, index) => {
             const FileIcon = getFileIcon(file.classification?.type);
+            const fileType = file.classification?.type || 'unknown';
+            const hasAnalytics = fileType !== 'unknown';
             
             return (
               <motion.div
@@ -236,28 +309,58 @@ const Files = () => {
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ delay: index * 0.02 }}
                 whileHover={{ scale: 1.02 }}
-                onClick={() => setSelectedFile(file)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelectedFile(file);
-                  }
-                }}
-                className="glass-card-hover p-4 cursor-pointer"
+                className="glass-card-hover p-4 cursor-pointer group"
                 role="button"
                 tabIndex={0}
                 aria-label={`View ${file.filename}`}
               >
-                <div className="flex items-start gap-3">
-                  <div className="p-3 bg-accent-indigo/20 rounded-xl flex-shrink-0">
-                    <FileIcon size={24} className="text-accent-indigo" />
+                <div 
+                  onClick={() => setSelectedFile(file)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedFile(file);
+                    }
+                  }}
+                  className="flex flex-col gap-3"
+                >
+                  {/* File Icon Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="p-3 bg-accent-indigo/20 rounded-xl">
+                      <FileIcon size={28} className="text-accent-indigo" />
+                    </div>
+                    {file.classification?.confidence && (
+                      <div className="px-2 py-1 bg-accent-teal/20 rounded-lg">
+                        <span className="text-xs font-medium text-accent-teal">
+                          {(file.classification.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
+
+                  {/* File Info */}
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-medium truncate mb-1">{file.filename || 'Unnamed'}</h4>
-                    <p className="text-sm text-white/60 truncate mb-2">
+                    <h4 className="font-medium truncate mb-1 text-base">{file.filename || 'Unnamed'}</h4>
+                    <p className="text-sm text-white/60 truncate mb-3">
                       {file.classification?.category || 'Uncategorized'}
                     </p>
-                    <div className="flex items-center gap-3 text-xs text-white/40">
+                    
+                    {/* Tags */}
+                    {file.classification?.subcategories && file.classification.subcategories.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {file.classification.subcategories.slice(0, 2).map((tag, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-0.5 bg-white/5 text-white/50 rounded text-xs"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Meta Information */}
+                    <div className="flex flex-col gap-1 text-xs text-white/40">
                       <span className="flex items-center gap-1">
                         <HardDrive size={12} />
                         {formatSize(file.size)}
@@ -268,6 +371,20 @@ const Files = () => {
                       </span>
                     </div>
                   </div>
+
+                  {/* Analytics Button */}
+                  {hasAnalytics && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedFile(file);
+                      }}
+                      className="flex items-center justify-center gap-2 px-3 py-2 bg-accent-indigo/20 hover:bg-accent-indigo/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <BarChart3 size={14} />
+                      <span className="text-xs font-medium">View Analytics</span>
+                    </button>
+                  )}
                 </div>
               </motion.div>
             );
@@ -279,7 +396,9 @@ const Files = () => {
       {selectedFile && (
         <PreviewModal
           file={selectedFile}
+          files={filteredFiles}
           onClose={() => setSelectedFile(null)}
+          onNavigate={(newFile) => setSelectedFile(newFile)}
         />
       )}
     </div>
