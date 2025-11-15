@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -16,7 +16,10 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw
 } from 'lucide-react';
 import { fetchFilePreview, downloadFile, fetchFileAnalytics } from '../../api';
 
@@ -28,6 +31,14 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [expandedFields, setExpandedFields] = useState({});
+  
+  // Zoom and pan state
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const imageContainerRef = useRef(null);
+  const touchStartRef = useRef({ distance: 0, center: { x: 0, y: 0 } });
 
   // Find current file index
   const currentIndex = files.findIndex(f => f.id === file.id);
@@ -36,9 +47,10 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
 
   useEffect(() => {
     loadPreview();
-    // Reset analytics when file changes
+    // Reset analytics and zoom when file changes
     setAnalytics(null);
     setActiveTab('preview');
+    resetZoom();
   }, [file.id]);
 
   useEffect(() => {
@@ -77,7 +89,8 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   };
 
   const loadAnalytics = async () => {
-    const fileType = file.classification?.type;
+    // Use classification type or fall back to file_type
+    const fileType = file.classification?.type || file.file_type;
     if (!fileType || fileType === 'unknown') {
       setAnalytics({ error: 'Analytics not available for this file type' });
       return;
@@ -107,6 +120,118 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     }
   };
 
+  // Zoom and Pan functions
+  const resetZoom = () => {
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  const zoomIn = () => {
+    setZoomLevel(prev => Math.min(prev + 0.25, 4.0));
+  };
+
+  const zoomOut = () => {
+    setZoomLevel(prev => {
+      const newZoom = Math.max(prev - 0.25, 0.5);
+      if (newZoom === 1) {
+        setPanPosition({ x: 0, y: 0 });
+      }
+      return newZoom;
+    });
+  };
+
+  const handleWheel = (e) => {
+    if (!imageContainerRef.current) return;
+    
+    e.preventDefault();
+    
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const multiplier = e.ctrlKey ? 2 : 1;
+    
+    if (e.shiftKey) {
+      // Horizontal pan with shift
+      setPanPosition(prev => ({ ...prev, x: prev.x - e.deltaY }));
+    } else {
+      // Zoom
+      setZoomLevel(prev => Math.min(Math.max(prev + delta * multiplier, 0.5), 4.0));
+    }
+  };
+
+  const handleMouseDown = (e) => {
+    if (zoomLevel <= 1) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    setPanPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      // Two-finger pinch
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      touchStartRef.current = {
+        distance,
+        center: {
+          x: (touch1.clientX + touch2.clientX) / 2,
+          y: (touch1.clientY + touch2.clientY) / 2
+        }
+      };
+    } else if (e.touches.length === 1 && zoomLevel > 1) {
+      // Single-finger drag when zoomed
+      const touch = e.touches[0];
+      setIsDragging(true);
+      setDragStart({ x: touch.clientX - panPosition.x, y: touch.clientY - panPosition.y });
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2) {
+      // Pinch zoom
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(
+        touch2.clientX - touch1.clientX,
+        touch2.clientY - touch1.clientY
+      );
+      
+      const scale = distance / touchStartRef.current.distance;
+      const newZoom = Math.min(Math.max(zoomLevel * scale, 0.5), 4.0);
+      setZoomLevel(newZoom);
+      
+      touchStartRef.current.distance = distance;
+    } else if (e.touches.length === 1 && isDragging) {
+      // Pan while zoomed
+      e.preventDefault();
+      const touch = e.touches[0];
+      setPanPosition({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
   const formatSize = (bytes) => {
     if (!bytes) return '0 B';
     const k = 1024;
@@ -127,13 +252,15 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
   };
 
   const getFileIcon = () => {
-    const type = file.classification?.type;
+    // Use classification type or fall back to file_type
+    const type = file.classification?.type || file.file_type;
     switch (type) {
       case 'image': return ImageIcon;
       case 'pdf': return FileText;
       case 'video': return Video;
       case 'audio': return Music;
       case 'json': return Database;
+      case 'text': return FileText;
       default: return FileText;
     }
   };
@@ -174,8 +301,105 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       }));
     };
 
+    // Check if string is Base64 image data
+    const isBase64Image = (value) => {
+      if (typeof value !== 'string') return false;
+      // Check if it looks like Base64 (contains only valid Base64 characters and is reasonably long)
+      const base64Pattern = /^[A-Za-z0-9+/=]{100,}$/;
+      return base64Pattern.test(value.replace(/\s/g, ''));
+    };
+
     const renderValue = (key, value) => {
-      if (typeof value === 'string' && value.length > 400) {
+      // Special handling for preview field (Base64 image)
+      if ((key === 'preview' || key.includes('thumbnail') || key.includes('image')) && isBase64Image(value)) {
+        return (
+          <div className="mt-2 relative">
+            {/* Zoom Controls */}
+            <div className="absolute top-2 right-2 z-10 backdrop-blur-md bg-white/10 rounded-xl shadow-lg px-3 py-1 flex gap-2">
+              <button
+                onClick={zoomIn}
+                disabled={zoomLevel >= 4.0}
+                className="p-1 hover:bg-white/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Zoom in"
+              >
+                <ZoomIn size={18} />
+              </button>
+              <button
+                onClick={zoomOut}
+                disabled={zoomLevel <= 0.5}
+                className="p-1 hover:bg-white/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Zoom out"
+              >
+                <ZoomOut size={18} />
+              </button>
+              <button
+                onClick={resetZoom}
+                className="p-1 hover:bg-white/20 rounded transition-colors"
+                aria-label="Reset zoom"
+              >
+                <RotateCcw size={18} />
+              </button>
+            </div>
+            
+            {/* Image Container with Pan/Zoom */}
+            <div 
+              ref={imageContainerRef}
+              className="overflow-hidden rounded-lg border border-white/10 max-h-96 flex items-center justify-center bg-black/20"
+              style={{ cursor: zoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
+              onWheel={handleWheel}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            >
+              <img 
+                src={`data:image/png;base64,${value}`}
+                alt="Preview"
+                className="max-w-full max-h-96 object-contain select-none"
+                style={{
+                  transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
+                  transition: isDragging ? 'none' : 'transform 150ms ease',
+                  pointerEvents: 'none'
+                }}
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.parentElement.nextSibling.style.display = 'block';
+                }}
+                draggable={false}
+              />
+            </div>
+            <div style={{ display: 'none' }} className="text-sm text-white/40 italic mt-2">
+              Preview image failed to load
+            </div>
+          </div>
+        );
+      }
+
+      // Special handling for text field (extracted text, OCR output)
+      if ((key === 'text' || key === 'extracted_text' || key === 'ocr_text') && typeof value === 'string' && value.length > 300) {
+        const isExpanded = expandedFields[key];
+        const displayText = isExpanded ? value : value.substring(0, 300) + '...';
+        
+        return (
+          <div>
+            <div className="text-sm font-mono text-white/80 whitespace-pre-wrap break-words max-h-64 overflow-y-auto p-3 bg-white/5 rounded-lg border border-white/10">
+              {displayText}
+            </div>
+            <button
+              onClick={() => toggleExpand(key)}
+              className="mt-2 px-3 py-1 bg-accent-indigo/20 hover:bg-accent-indigo/30 text-accent-indigo rounded-lg text-xs font-medium transition-colors"
+            >
+              {isExpanded ? 'Show Less' : 'Show More'}
+            </button>
+          </div>
+        );
+      }
+
+      // Long text handling (non-Base64)
+      if (typeof value === 'string' && value.length > 400 && !isBase64Image(value)) {
         const isExpanded = expandedFields[key];
         const displayText = isExpanded ? value : value.substring(0, 400) + '...';
         
@@ -194,14 +418,17 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
         );
       }
       
+      // Percentage values
       if (typeof value === 'number' && value < 1 && value > 0) {
         return `${(value * 100).toFixed(1)}%`;
       }
       
+      // Regular string values
       if (typeof value === 'string') {
         return <div className="text-lg font-semibold whitespace-pre-wrap break-words">{value}</div>;
       }
       
+      // Other values
       return <div className="text-lg font-semibold">{String(value)}</div>;
     };
 
@@ -209,18 +436,24 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
         <h3 className="text-lg font-semibold mb-4">Analytics Results</h3>
         <div className="grid grid-cols-1 gap-4">
-          {Object.entries(analytics).map(([key, value]) => {
-            if (key === 'error' || typeof value === 'object') return null;
-            
-            return (
-              <div key={key} className="glass-card p-4 rounded-xl">
-                <div className="text-white/60 text-sm mb-2 capitalize">
-                  {key.replace(/_/g, ' ')}
+          {Object.entries(analytics).filter(([key, value]) => key !== 'error' && typeof value !== 'object').length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-white/60">No scalar analytics data available</p>
+            </div>
+          ) : (
+            Object.entries(analytics).map(([key, value]) => {
+              if (key === 'error' || typeof value === 'object') return null;
+              
+              return (
+                <div key={key} className="glass-card p-4 rounded-xl">
+                  <div className="text-white/60 text-sm mb-2 capitalize">
+                    {key.replace(/_/g, ' ')}
+                  </div>
+                  {renderValue(key, value)}
                 </div>
-                {renderValue(key, value)}
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {Object.entries(analytics).some(([, value]) => typeof value === 'object' && value !== null) && (
@@ -271,7 +504,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className="text-2xl font-bold truncate">{file.filename}</h2>
                     <span className="px-2 py-1 bg-white/5 rounded text-xs text-white/50 capitalize">
-                      {file.classification?.type || 'unknown'}
+                      {file.classification?.type || file.file_type || 'unknown'}
                     </span>
                   </div>
                   <p className="text-white/60 text-sm mt-1">
@@ -413,88 +646,9 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                         <FileText size={18} className="text-accent-indigo" />
                         <span className="text-white/60 text-sm">Type</span>
                       </div>
-                      <p className="text-lg font-semibold capitalize">{file.classification?.type || 'Unknown'}</p>
+                      <p className="text-lg font-semibold capitalize">{file.classification?.type || file.file_type || 'Unknown'}</p>
                     </div>
                   </div>
-
-                  {/* Preview Content */}
-                  {preview && (
-                    <div className="glass-card p-6 rounded-xl">
-                      <h3 className="text-lg font-semibold mb-4">Analysis Results</h3>
-                      
-                      {/* Image Preview */}
-                      {file.classification?.type === 'image' && preview.width && (
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-white/60">Dimensions:</span>
-                              <span className="ml-2 font-medium">{preview.width} x {preview.height}</span>
-                            </div>
-                            <div>
-                              <span className="text-white/60">Format:</span>
-                              <span className="ml-2 font-medium">{preview.format || 'N/A'}</span>
-                            </div>
-                            {preview.has_exif !== undefined && (
-                              <div>
-                                <span className="text-white/60">EXIF Data:</span>
-                                <span className="ml-2 font-medium">{preview.has_exif ? 'Yes' : 'No'}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* PDF Preview */}
-                      {file.classification?.type === 'pdf' && (
-                        <div className="space-y-3 text-sm">
-                          {preview.page_count && (
-                            <div>
-                              <span className="text-white/60">Pages:</span>
-                              <span className="ml-2 font-medium">{preview.page_count}</span>
-                            </div>
-                          )}
-                          {preview.text_length && (
-                            <div>
-                              <span className="text-white/60">Text Length:</span>
-                              <span className="ml-2 font-medium">{preview.text_length.toLocaleString()} chars</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* JSON Preview */}
-                      {file.classification?.type === 'json' && preview.record_count !== undefined && (
-                        <div className="space-y-3 text-sm">
-                          <div>
-                            <span className="text-white/60">Records:</span>
-                            <span className="ml-2 font-medium">{preview.record_count}</span>
-                          </div>
-                          {preview.field_consistency && (
-                            <div>
-                              <span className="text-white/60">Consistency:</span>
-                              <span className="ml-2 font-medium">{(preview.field_consistency * 100).toFixed(0)}%</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Audio/Video Preview */}
-                      {(file.classification?.type === 'audio' || file.classification?.type === 'video') && preview.duration_seconds && (
-                        <div className="space-y-3 text-sm">
-                          <div>
-                            <span className="text-white/60">Duration:</span>
-                            <span className="ml-2 font-medium">{preview.duration_formatted || `${preview.duration_seconds}s`}</span>
-                          </div>
-                          {preview.width && preview.height && (
-                            <div>
-                              <span className="text-white/60">Resolution:</span>
-                              <span className="ml-2 font-medium">{preview.width} x {preview.height}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
 
                   {/* Actions */}
                   <div className="flex gap-3">

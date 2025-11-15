@@ -69,7 +69,7 @@ class LocalStore:
                 print(f"[STORE] WARNING: Large metadata size ({metadata_size / 1024:.0f} KB)")
             
             self._save_json(file_path, metadata)
-            print(f"[STORE] ✓ Metadata saved successfully")
+            print(f"[STORE] OK Metadata saved successfully")
             return True
         except Exception as e:
             print(f"[STORE] ERROR saving metadata: {e}")
@@ -214,14 +214,14 @@ class LocalStore:
         
         # Sanitize data to ensure all types are JSON-serializable
         sanitized_data = sanitize_for_json(data)
-        print(f"[STORE._save_json] ✓ Data sanitized")
+        print(f"[STORE._save_json] OK Data sanitized")
         
         print(f"[STORE._save_json] Writing JSON...")
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(sanitized_data, f, indent=2, ensure_ascii=False)
         
         file_size = os.path.getsize(file_path)
-        print(f"[STORE._save_json] ✓ File written: {file_size:,} bytes")
+        print(f"[STORE._save_json] OK File written: {file_size:,} bytes")
     
     def _load_json(self, file_path: str) -> Optional[Dict[str, Any]]:
         """Load data from a JSON file."""

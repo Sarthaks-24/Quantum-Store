@@ -89,16 +89,8 @@ export async function fetchRecentFiles(limit = 6) {
     const data = await response.json();
     return data.files || [];
   } catch (error) {
-    console.warn('API fetchRecentFiles failed, using fallback:', error.message);
-    
-    // Try to load mock data
-    try {
-      const mockResponse = await fetch('/src/mocks/dashboard.json');
-      const mockData = await mockResponse.json();
-      return mockData.recentFiles?.slice(0, limit) || [];
-    } catch {
-      return [];
-    }
+    console.warn('API fetchRecentFiles failed:', error.message);
+    return [];
   }
 }
 

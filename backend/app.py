@@ -174,10 +174,35 @@ async def upload_file(file: UploadFile = File(...)):
         
         store.save_metadata(file_id, metadata)
         
+        # Auto-analyze the file based on type
+        analysis = None
+        try:
+            if file_type == 'json':
+                analysis = json_processor.analyze(file_path, file_size)
+                analysis = save_analysis_with_classification(file_id, "json", analysis, metadata, file_path)
+            elif file_type == 'pdf':
+                analysis = pdf_processor.analyze(file_path)
+                analysis = save_analysis_with_classification(file_id, "pdf", analysis, metadata, file_path)
+            elif file_type == 'image':
+                analysis = image_processor.analyze(file_path)
+                analysis = save_analysis_with_classification(file_id, "image", analysis, metadata, file_path)
+            elif file_type == 'video':
+                analysis = video_processor.analyze(file_path)
+                analysis = save_analysis_with_classification(file_id, "video", analysis, metadata, file_path)
+            elif file_type == 'text':
+                analysis = text_processor.analyze(file_path)
+                analysis = save_analysis_with_classification(file_id, "text", analysis, metadata, file_path)
+            
+            print(f"[UPLOAD] Auto-analysis complete for {filename}")
+        except Exception as analysis_error:
+            print(f"[UPLOAD] Auto-analysis failed for {filename}: {str(analysis_error)}")
+            # Don't fail upload if analysis fails
+        
         return JSONResponse(content={
             "file_id": file_id,
             "filename": filename,
             "file_type": file_type,
+            "analyzed": analysis is not None,
             "message": "File uploaded successfully"
         })
     except Exception as e:
@@ -229,12 +254,38 @@ async def upload_batch(files: List[UploadFile] = File(...), folder_id: str = For
                 }
                 store.save_metadata(file_id, metadata)
                 
+                # Auto-analyze the file based on type
+                analyzed = False
+                try:
+                    if file_type == 'json':
+                        analysis = json_processor.analyze(file_path, file_size)
+                        save_analysis_with_classification(file_id, "json", analysis, metadata, file_path)
+                        analyzed = True
+                    elif file_type == 'pdf':
+                        analysis = pdf_processor.analyze(file_path)
+                        save_analysis_with_classification(file_id, "pdf", analysis, metadata, file_path)
+                        analyzed = True
+                    elif file_type == 'image':
+                        analysis = image_processor.analyze(file_path)
+                        save_analysis_with_classification(file_id, "image", analysis, metadata, file_path)
+                        analyzed = True
+                    elif file_type == 'video':
+                        analysis = video_processor.analyze(file_path)
+                        save_analysis_with_classification(file_id, "video", analysis, metadata, file_path)
+                        analyzed = True
+                    elif file_type == 'text':
+                        analysis = text_processor.analyze(file_path)
+                        save_analysis_with_classification(file_id, "text", analysis, metadata, file_path)
+                        analyzed = True
+                except Exception as analysis_error:
+                    print(f"[UPLOAD] Auto-analysis failed for {filename}: {str(analysis_error)}")
+                
                 results.append({
                     "file_id": file_id,
                     "filename": filename,
                     "file_type": file_type,
                     "size": file_size,
-                    "analyzed": False
+                    "analyzed": analyzed
                 })
                 
             except Exception as file_error:
