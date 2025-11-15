@@ -3,6 +3,15 @@ import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
+import sys
+
+# Add parent directory to path for imports
+if __name__ != "__main__":
+    from utils.serializers import sanitize_for_json
+else:
+    # For standalone execution
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from utils.serializers import sanitize_for_json
 
 class LocalStore:
     def __init__(self, base_path: str = "data"):
@@ -174,9 +183,12 @@ class LocalStore:
         return self._load_json(self.tfidf_index_path) or {}
     
     def _save_json(self, file_path: str, data: Dict[str, Any]):
-        """Save data to a JSON file."""
+        """Save data to a JSON file with sanitization."""
+        # Sanitize data to ensure all types are JSON-serializable
+        sanitized_data = sanitize_for_json(data)
+        
         with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(sanitized_data, f, indent=2, ensure_ascii=False)
     
     def _load_json(self, file_path: str) -> Optional[Dict[str, Any]]:
         """Load data from a JSON file."""

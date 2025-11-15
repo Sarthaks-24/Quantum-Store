@@ -364,12 +364,12 @@ class JSONProcessor:
                 
                 if values:
                     stats[normalized_key] = {
-                        "min": min(values),
-                        "max": max(values),
-                        "mean": statistics.mean(values),
-                        "median": statistics.median(values),
-                        "stddev": statistics.stdev(values) if len(values) > 1 else 0,
-                        "sample_size": len(values)
+                        "min": float(min(values)),
+                        "max": float(max(values)),
+                        "mean": float(statistics.mean(values)),
+                        "median": float(statistics.median(values)),
+                        "stddev": float(statistics.stdev(values)) if len(values) > 1 else 0.0,
+                        "sample_size": int(len(values))
                     }
         
         return stats
