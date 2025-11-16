@@ -4,7 +4,7 @@
   "description": "QuantumStore - File Intelligence Engine with unified dev environment",
   "scripts": {
     "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\" --names \"API,UI\" --prefix-colors \"cyan,magenta\"",
-    "start:backend": "cd backend && E:/Auraverse/Quantum-Store/venv/Scripts/python.exe -m uvicorn app:app --reload --port 8000",
+    "start:backend": "cd backend && python -m uvicorn app:app --reload --port 8000",
     "start:frontend": "cd frontend && npm run dev",
     "install:all": "npm install && cd frontend && npm install && cd .. && pip install -r requirements.txt",
     "test": "cd frontend && npm test"
@@ -12,7 +12,14 @@
   "devDependencies": {
     "concurrently": "^8.2.2"
   },
-  "keywords": ["file-intelligence", "classification", "dashboard"],
+  "keywords": [
+    "file-intelligence",
+    "classification",
+    "dashboard"
+  ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "all": "^0.0.0"
+  }
 }
