@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Files, Upload } from 'lucide-react';
+import { LayoutDashboard, Files, Upload, FolderOpen } from 'lucide-react';
 
 const Layout = ({ children }) => {
   const navigate = useNavigate();
@@ -10,6 +10,7 @@ const Layout = ({ children }) => {
   const sidebar = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { id: 'files', label: 'Files', icon: Files, path: '/files' },
+    { id: 'groups', label: 'Groups', icon: FolderOpen, path: '/groups' },
   ];
 
   return (

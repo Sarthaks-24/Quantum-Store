@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Files,
@@ -10,7 +11,8 @@ import {
   Database,
   TrendingUp,
   Clock,
-  HardDrive
+  HardDrive,
+  Upload
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { fetchSummary, fetchRecentFiles, fetchFiles, computeWeeklyActivity, normalizeWeeklyActivity } from '../../api';
@@ -227,6 +229,56 @@ const Dashboard = () => {
             <StatCard key={stat.title} stat={stat} index={index} />
           ))}
         </div>
+
+        {/* Quick Actions */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="glass-card p-6 rounded-2xl mb-6"
+        >
+          <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Link 
+              to="/upload"
+              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-accent-indigo/20 flex items-center justify-center group-hover:bg-accent-indigo/30 transition-colors">
+                <Upload size={20} className="text-accent-indigo" />
+              </div>
+              <div>
+                <p className="font-semibold">Upload Files</p>
+                <p className="text-sm text-white/60">Add new files to your store</p>
+              </div>
+            </Link>
+            
+            <Link 
+              to="/files"
+              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-accent-teal/20 flex items-center justify-center group-hover:bg-accent-teal/30 transition-colors">
+                <FileText size={20} className="text-accent-teal" />
+              </div>
+              <div>
+                <p className="font-semibold">Browse Files</p>
+                <p className="text-sm text-white/60">View all uploaded files</p>
+              </div>
+            </Link>
+            
+            <Link 
+              to="/groups"
+              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+            >
+              <div className="w-10 h-10 rounded-lg bg-accent-purple/20 flex items-center justify-center group-hover:bg-accent-purple/30 transition-colors">
+                <FolderOpen size={20} className="text-accent-purple" />
+              </div>
+              <div>
+                <p className="font-semibold">Explore Groups</p>
+                <p className="text-sm text-white/60">Browse by category & type</p>
+              </div>
+            </Link>
+          </div>
+        </motion.div>
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
