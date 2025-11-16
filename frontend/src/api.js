@@ -362,7 +362,7 @@ export async function fetchWeeklyMetrics() {
 
 /**
  * Fetch all category groups with files
- * Returns normalized structure: { groups: [...] }
+ * Returns raw backend data (normalization happens in component via normalizeGroups utility)
  */
 export async function fetchGroups() {
   try {
@@ -373,73 +373,11 @@ export async function fetchGroups() {
     }
     
     const data = await response.json();
-    
-    // Normalize backend response to expected frontend structure
-    return normalizeGroupsData(data);
+    return data; // Return raw data - normalization handled by normalizeGroups utility
   } catch (error) {
     console.warn('Groups fetch failed:', error.message);
-    return { groups: [] };
+    return { groups: {} }; // Return empty groups object for normalization
   }
-}
-
-/**
- * Normalize groups data from backend to consistent frontend structure
- * Backend returns: { groups: {category: [file_objects]}, summary: {category: count} }
- * Frontend expects: { groups: [{name, count, subgroups: [{name, items: [file_objects]}]}] }
- */
-function normalizeGroupsData(backendData) {
-  const { groups = {}, summary = {} } = backendData;
-  
-  // Group categories by main type (images, pdfs, json, text, videos, audio)
-  const mainCategories = {
-    images: { name: 'Images', subgroups: [] },
-    pdfs: { name: 'Documents', subgroups: [] },
-    json: { name: 'JSON Files', subgroups: [] },
-    text: { name: 'Text Files', subgroups: [] },
-    videos: { name: 'Videos', subgroups: [] },
-    audio: { name: 'Audio Files', subgroups: [] },
-  };
-  
-  // Process each category from backend
-  Object.entries(groups).forEach(([category, files]) => {
-    // Skip empty categories
-    if (!files || files.length === 0) return;
-    
-    // Determine main category type
-    let mainType = 'other';
-    if (category.startsWith('images_')) mainType = 'images';
-    else if (category.startsWith('pdfs_')) mainType = 'pdfs';
-    else if (category.startsWith('json_')) mainType = 'json';
-    else if (category.startsWith('text_')) mainType = 'text';
-    else if (category.startsWith('videos_')) mainType = 'videos';
-    else if (category.startsWith('audio_')) mainType = 'audio';
-    
-    // Extract subcategory name (remove prefix)
-    const subcategoryName = category
-      .replace(/^(images|pdfs|json|text|videos|audio)_/, '')
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, l => l.toUpperCase());
-    
-    // Add to appropriate main category (files are already full objects from backend)
-    if (mainCategories[mainType]) {
-      mainCategories[mainType].subgroups.push({
-        name: subcategoryName,
-        items: files, // Backend now returns full file objects, not just IDs
-        originalCategory: category
-      });
-    }
-  });
-  
-  // Convert to array and calculate counts
-  const normalizedGroups = Object.entries(mainCategories)
-    .map(([key, category]) => ({
-      ...category,
-      count: category.subgroups.reduce((sum, sg) => sum + sg.items.length, 0),
-      id: key
-    }))
-    .filter(category => category.count > 0); // Only include categories with files
-  
-  return { groups: normalizedGroups };
 }
 
 /**

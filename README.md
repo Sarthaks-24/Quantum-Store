@@ -62,6 +62,12 @@ npm run dev
 - **Modern Glassmorphic UI** - Soft gradients, blur effects, smooth animations
 - **Real-time Analytics** - File stats, type distribution charts, activity graphs
 - **Advanced File Preview** - Modal with metadata, classification details, download
+- **File Categories Explorer** - Hierarchical browsing with lazy-loading, search, and accessibility
+  - **Smart Fallbacks**: Automatically falls back to `/files` endpoint if `/groups` is unavailable
+  - **Deterministic State**: Uses `expandedMap` for reliable accordion behavior
+  - **Lazy Loading**: Subgroup items load on-demand to improve performance
+  - **Search & Auto-Expand**: Searches across categories, subcategories, and filenames with automatic expansion of matches
+  - **Accessibility**: Full keyboard navigation with `aria-expanded` attributes
 - **Responsive Design** - Works on desktop, tablet, and mobile
 - **Offline Support** - Graceful fallback to mock data when API unavailable
 
