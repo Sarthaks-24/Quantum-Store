@@ -86,12 +86,12 @@ const FileCard = React.memo(({ file, index, onSelect }) => {
       >
         {/* File Icon Header */}
         <div className="flex items-start justify-between">
-          <div className="p-3 bg-accent-indigo/20 rounded-xl">
-            <FileIcon size={28} className="text-accent-indigo" />
+          <div className="p-3 bg-primary-light rounded-lg">
+            <FileIcon size={24} className="text-primary" />
           </div>
           {file.classification?.confidence && (
-            <div className="px-2 py-1 bg-accent-teal/20 rounded-lg">
-              <span className="text-xs font-medium text-accent-teal">
+            <div className="px-2 py-1 bg-primary-light rounded-lg">
+              <span className="text-xs font-medium text-primary">
                 {(file.classification.confidence * 100).toFixed(0)}%
               </span>
             </div>
@@ -100,8 +100,8 @@ const FileCard = React.memo(({ file, index, onSelect }) => {
 
         {/* File Info */}
         <div className="flex-1 min-w-0">
-          <h4 className="font-medium truncate mb-1 text-base">{file.filename || 'Unnamed'}</h4>
-          <p className="text-sm text-white/60 truncate mb-3">
+          <h4 className="font-medium text-text-primary truncate mb-1">{file.filename || 'Unnamed'}</h4>
+          <p className="text-sm text-text-secondary truncate mb-2">
             {file.classification?.category || 'Uncategorized'}
           </p>
           
@@ -111,7 +111,7 @@ const FileCard = React.memo(({ file, index, onSelect }) => {
               {file.classification.subcategories.slice(0, 2).map((tag, i) => (
                 <span
                   key={i}
-                  className="px-2 py-0.5 bg-white/5 text-white/50 rounded text-xs"
+                  className="px-2 py-0.5 bg-surface text-text-muted rounded text-xs"
                 >
                   {tag}
                 </span>
@@ -120,7 +120,7 @@ const FileCard = React.memo(({ file, index, onSelect }) => {
           )}
 
           {/* Meta Information */}
-          <div className="flex flex-col gap-1 text-xs text-white/40">
+          <div className="flex flex-col gap-1 text-xs text-text-muted">
             <span className="flex items-center gap-1">
               <HardDrive size={12} />
               {formatSize(file.size)}
@@ -136,7 +136,7 @@ const FileCard = React.memo(({ file, index, onSelect }) => {
         {hasAnalytics && (
           <button
             onClick={handleAnalyticsClick}
-            className="flex items-center justify-center gap-2 px-3 py-2 bg-accent-indigo/20 hover:bg-accent-indigo/30 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+            className="flex items-center justify-center gap-2 px-3 py-2 bg-primary-light hover:bg-primary/10 text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
           >
             <BarChart3 size={14} />
             <span className="text-xs font-medium">View Analytics</span>
@@ -325,7 +325,7 @@ const Files = () => {
         className="mb-6"
       >
         <h1 className="text-3xl font-bold mb-2">Files</h1>
-        <p className="text-white/60">Manage and analyze your uploaded files</p>
+        <p className="text-text-secondary">Manage and analyze your uploaded files</p>
       </motion.div>
 
       {/* Search and Filters */}
@@ -333,19 +333,19 @@ const Files = () => {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="glass-card p-6 rounded-2xl mb-6"
+        className="glass-card p-6 mb-6"
       >
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Search Bar */}
           <div className="flex-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40" size={20} />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-muted" size={20} />
               <input
                 type="text"
                 placeholder="Search files by name..."
                 value={searchQuery}
                 onChange={handleSearchChange}
-                className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-indigo transition-colors"
+                className="w-full pl-10 pr-4 py-3 bg-surface border border-border-color rounded-lg focus:outline-none focus:border-primary transition-colors"
               />
             </div>
           </div>
@@ -356,46 +356,40 @@ const Files = () => {
             <select
               value={selectedDateRange}
               onChange={(e) => setSelectedDateRange(e.target.value)}
-              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer text-white shadow-xl"
+              className="px-4 py-3 bg-card-bg border border-border-color rounded-lg focus:outline-none focus:border-primary cursor-pointer"
             >
-              <option value="all" className="bg-slate-800 text-white">All Dates</option>
-              <option value="today" className="bg-slate-800 text-white">Today</option>
-              <option value="week" className="bg-slate-800 text-white">Last 7 Days</option>
-              <option value="month" className="bg-slate-800 text-white">Last 30 Days</option>
+              <option value="all">All Dates</option>
+              <option value="today">Today</option>
+              <option value="week">Last 7 Days</option>
+              <option value="month">Last 30 Days</option>
             </select>
 
             {/* Size Range Filter */}
             <select
               value={selectedSizeRange}
               onChange={(e) => setSelectedSizeRange(e.target.value)}
-              className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer text-white shadow-xl"
+              className="px-4 py-3 bg-card-bg border border-border-color rounded-lg focus:outline-none focus:border-primary cursor-pointer"
             >
-              <option value="all" className="bg-slate-800 text-white">All Sizes</option>
-              <option value="small" className="bg-slate-800 text-white">Small (&lt;1MB)</option>
-              <option value="medium" className="bg-slate-800 text-white">Medium (1-10MB)</option>
-              <option value="large" className="bg-slate-800 text-white">Large (&gt;10MB)</option>
+              <option value="all">All Sizes</option>
+              <option value="small">Small (&lt;1MB)</option>
+              <option value="medium">Medium (1-10MB)</option>
+              <option value="large">Large (&gt;10MB)</option>
             </select>
 
             {/* Sort Dropdown */}
-            <div className="relative z-10">
-              <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40 pointer-events-none" size={20} />
+            <div className="relative">
+              <SortAsc className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-muted pointer-events-none" size={20} />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="pl-10 pr-8 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-accent-teal cursor-pointer appearance-none text-white shadow-xl"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ffffff' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundPosition: 'right 0.75rem center',
-                  backgroundSize: '12px'
-                }}
+                className="pl-10 pr-8 py-3 bg-card-bg border border-border-color rounded-lg focus:outline-none focus:border-primary cursor-pointer appearance-none"
               >
-                <option value="newest" className="bg-slate-800 text-white">Newest First</option>
-                <option value="oldest" className="bg-slate-800 text-white">Oldest First</option>
-                <option value="largest" className="bg-slate-800 text-white">Largest First</option>
-                <option value="smallest" className="bg-slate-800 text-white">Smallest First</option>
-                <option value="name-asc" className="bg-slate-800 text-white">A → Z</option>
-                <option value="name-desc" className="bg-slate-800 text-white">Z → A</option>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="largest">Largest First</option>
+                <option value="smallest">Smallest First</option>
+                <option value="name-asc">A → Z</option>
+                <option value="name-desc">Z → A</option>
               </select>
             </div>
           </div>
@@ -407,10 +401,10 @@ const Files = () => {
             <button
               key={filter.value}
               onClick={() => setSelectedType(filter.value)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 selectedType === filter.value
-                  ? 'bg-accent-indigo text-white'
-                  : 'bg-white/5 text-white/60 hover:bg-white/10'
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-surface text-text-secondary border border-border-color hover:border-primary'
               }`}
             >
               {filter.label} ({filter.count})
@@ -422,18 +416,18 @@ const Files = () => {
       {/* Files Grid */}
       {loading ? (
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-indigo border-t-transparent mx-auto"></div>
-          <p className="text-white/60 mt-4">Loading files...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto"></div>
+          <p className="text-text-secondary mt-4">Loading files...</p>
         </div>
       ) : filteredFiles.length === 0 ? (
         <motion.div
           initial={{ scale: 0.9, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-12 rounded-2xl text-center"
+          className="glass-card p-12 text-center"
         >
-          <File size={64} className="mx-auto text-white/30 mb-4" />
+          <File size={64} className="mx-auto text-text-muted mb-4" />
           <h3 className="text-xl font-semibold mb-2">No files found</h3>
-          <p className="text-white/60">
+          <p className="text-text-secondary">
             {searchQuery || selectedType !== 'all'
               ? 'Try adjusting your filters or search query'
               : 'Upload your first file to get started'}
@@ -466,3 +460,4 @@ const Files = () => {
 };
 
 export default Files;
+

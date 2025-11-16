@@ -53,18 +53,18 @@ const ZoomControls = React.memo(({ zoomLevel, onZoomIn, onZoomOut, onReset }) =>
     <button
       onClick={onZoomOut}
       disabled={zoomLevel <= 0.5}
-      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      className="p-2 bg-primary-light hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
       aria-label="Zoom Out"
     >
       <ZoomOut size={20} />
     </button>
-    <div className="px-3 py-2 bg-white/10 rounded-lg min-w-[4rem] text-center">
+    <div className="px-3 py-2 bg-primary-light rounded-lg min-w-[4rem] text-center">
       <span className="text-sm font-medium">{Math.round(zoomLevel * 100)}%</span>
     </div>
     <button
       onClick={onZoomIn}
       disabled={zoomLevel >= 4.0}
-      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      className="p-2 bg-primary-light hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
       aria-label="Zoom In"
     >
       <ZoomIn size={20} />
@@ -72,7 +72,7 @@ const ZoomControls = React.memo(({ zoomLevel, onZoomIn, onZoomOut, onReset }) =>
     <button
       onClick={onReset}
       disabled={zoomLevel === 1}
-      className="p-2 bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
+      className="p-2 bg-primary-light hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed rounded-lg transition-colors"
       aria-label="Reset Zoom"
     >
       <RotateCcw size={20} />
@@ -315,7 +315,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       return (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-indigo border-t-transparent mx-auto"></div>
-          <p className="text-white/60 mt-4">Loading analytics...</p>
+          <p className="text-text-secondary mt-4">Loading analytics...</p>
         </div>
       );
     }
@@ -324,7 +324,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
       return (
         <div className="text-center py-12">
           <AlertCircle size={48} className="mx-auto text-amber-400 mb-3" />
-          <p className="text-white/60">{analytics.error}</p>
+          <p className="text-text-secondary">{analytics.error}</p>
         </div>
       );
     }
@@ -332,7 +332,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
     if (!analytics) {
       return (
         <div className="text-center py-12">
-          <p className="text-white/60">No analytics data available</p>
+          <p className="text-text-secondary">No analytics data available</p>
         </div>
       );
     }
@@ -360,7 +360,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
             {/* Image Container with Pan/Zoom */}
             <div 
               ref={imageContainerRef}
-              className="overflow-hidden rounded-lg border border-white/10 max-h-96 flex items-center justify-center bg-black/20"
+              className="overflow-hidden rounded-lg border border-border-color max-h-96 flex items-center justify-center bg-black/20"
               style={{ cursor: zoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
               onWheel={handleWheel}
               onMouseDown={handleMouseDown}
@@ -387,7 +387,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                 draggable={false}
               />
             </div>
-            <div style={{ display: 'none' }} className="text-sm text-white/40 italic mt-2">
+            <div style={{ display: 'none' }} className="text-sm text-text-muted italic mt-2">
               Preview image failed to load
             </div>
           </div>
@@ -401,7 +401,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
         
         return (
           <div>
-            <div className="text-sm font-mono text-white/80 whitespace-pre-wrap break-words max-h-64 overflow-y-auto p-3 bg-white/5 rounded-lg border border-white/10">
+            <div className="text-sm font-mono text-text-primary whitespace-pre-wrap break-words max-h-64 overflow-y-auto p-3 bg-surface rounded-lg border border-border-color">
               {displayText}
             </div>
             <button
@@ -454,15 +454,15 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
         <div className="grid grid-cols-1 gap-4">
           {Object.entries(analytics).filter(([key, value]) => key !== 'error' && typeof value !== 'object').length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-white/60">No scalar analytics data available</p>
+              <p className="text-text-secondary">No scalar analytics data available</p>
             </div>
           ) : (
             Object.entries(analytics).map(([key, value]) => {
               if (key === 'error' || typeof value === 'object') return null;
               
               return (
-                <div key={key} className="glass-card p-4 rounded-xl">
-                  <div className="text-white/60 text-sm mb-2 capitalize">
+                <div key={key} className="category-card p-4 rounded-xl">
+                  <div className="text-text-secondary text-sm mb-2 capitalize">
                     {key.replace(/_/g, ' ')}
                   </div>
                   {renderValue(key, value)}
@@ -473,10 +473,10 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
         </div>
 
         {Object.entries(analytics).some(([, value]) => typeof value === 'object' && value !== null) && (
-          <div className="glass-card p-4 rounded-xl mt-4">
-            <h4 className="text-sm font-semibold text-white/80 mb-3">Additional Data</h4>
+          <div className="category-card p-4 rounded-xl mt-4">
+            <h4 className="text-sm font-semibold text-text-primary mb-3">Additional Data</h4>
             <div className="max-h-64 overflow-y-auto">
-              <pre className="text-xs text-white/60 whitespace-pre-wrap break-words">
+              <pre className="text-xs text-text-secondary whitespace-pre-wrap break-words">
                 {JSON.stringify(
                   Object.fromEntries(
                     Object.entries(analytics).filter(([, value]) => typeof value === 'object' && value !== null)
@@ -506,11 +506,11 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.9, opacity: 0 }}
           transition={{ type: 'spring', damping: 25 }}
-          className="glass-card max-w-4xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide"
+          className="category-card max-w-4xl w-full max-h-[90vh] overflow-y-auto scrollbar-hide"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="sticky top-0 bg-bg-gradient-start/90 backdrop-blur-md p-6 border-b border-white/10">
+          <div className="sticky top-0 bg-bg-gradient-start/90 backdrop-blur-md p-6 border-b border-border-color">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-start gap-4 flex-1">
                 <div className="p-3 bg-accent-indigo/20 rounded-xl">
@@ -519,11 +519,11 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <h2 className="text-2xl font-bold truncate">{file.filename}</h2>
-                    <span className="px-2 py-1 bg-white/5 rounded text-xs text-white/50 capitalize">
+                    <span className="px-2 py-1 bg-surface rounded text-xs text-text-muted capitalize">
                       {file.classification?.type || file.file_type || 'unknown'}
                     </span>
                   </div>
-                  <p className="text-white/60 text-sm mt-1">
+                  <p className="text-text-secondary text-sm mt-1">
                     {file.classification?.category || 'Uncategorized'}
                   </p>
                   {file.classification?.subcategories && file.classification.subcategories.length > 0 && (
@@ -550,14 +550,14 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                       disabled={!hasPrevious}
                       className={`p-2 rounded-xl transition-colors ${
                         hasPrevious 
-                          ? 'hover:bg-white/10 text-white' 
-                          : 'text-white/30 cursor-not-allowed'
+                          ? 'hover:bg-primary-light text-white' 
+                          : 'text-text-muted cursor-not-allowed'
                       }`}
                       aria-label="Previous file"
                     >
                       <ChevronLeft size={24} />
                     </button>
-                    <span className="text-white/40 text-sm">
+                    <span className="text-text-muted text-sm">
                       {currentIndex + 1} / {files.length}
                     </span>
                     <button
@@ -565,8 +565,8 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                       disabled={!hasNext}
                       className={`p-2 rounded-xl transition-colors ${
                         hasNext 
-                          ? 'hover:bg-white/10 text-white' 
-                          : 'text-white/30 cursor-not-allowed'
+                          ? 'hover:bg-primary-light text-white' 
+                          : 'text-text-muted cursor-not-allowed'
                       }`}
                       aria-label="Next file"
                     >
@@ -576,7 +576,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                 )}
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                  className="p-2 hover:bg-primary-light rounded-xl transition-colors"
                   aria-label="Close preview"
                 >
                   <X size={24} />
@@ -591,7 +591,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
                   activeTab === 'preview'
                     ? 'bg-accent-indigo text-white'
-                    : 'bg-white/5 text-white/60 hover:bg-white/10'
+                    : 'bg-surface text-text-secondary hover:bg-primary-light'
                 }`}
               >
                 <Eye size={18} />
@@ -602,7 +602,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl font-medium transition-all ${
                   activeTab === 'analytics'
                     ? 'bg-accent-indigo text-white'
-                    : 'bg-white/5 text-white/60 hover:bg-white/10'
+                    : 'bg-surface text-text-secondary hover:bg-primary-light'
                 }`}
               >
                 <BarChart3 size={18} />
@@ -617,39 +617,39 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
               loading ? (
                 <div className="text-center py-12">
                   <div className="animate-spin rounded-full h-12 w-12 border-4 border-accent-indigo border-t-transparent mx-auto"></div>
-                  <p className="text-white/60 mt-4">Loading preview...</p>
+                  <p className="text-text-secondary mt-4">Loading preview...</p>
                 </div>
               ) : preview?.error ? (
                 <div className="text-center py-12">
                   <AlertCircle size={48} className="mx-auto text-red-400 mb-3" />
-                  <p className="text-white/60">Preview unavailable</p>
-                  <p className="text-white/40 text-sm mt-2">{preview.message}</p>
+                  <p className="text-text-secondary">Preview unavailable</p>
+                  <p className="text-text-muted text-sm mt-2">{preview.message}</p>
                 </div>
               ) : (
                 <div className="space-y-6">
                   {/* Metadata Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="glass-card p-4 rounded-xl">
+                    <div className="category-card p-4 rounded-xl">
                       <div className="flex items-center gap-3 mb-2">
                         <HardDrive size={18} className="text-accent-teal" />
-                        <span className="text-white/60 text-sm">File Size</span>
+                        <span className="text-text-secondary text-sm">File Size</span>
                       </div>
                       <p className="text-lg font-semibold">{formatSize(file.size)}</p>
                     </div>
 
-                    <div className="glass-card p-4 rounded-xl">
+                    <div className="category-card p-4 rounded-xl">
                       <div className="flex items-center gap-3 mb-2">
                         <Calendar size={18} className="text-accent-indigo" />
-                        <span className="text-white/60 text-sm">Uploaded</span>
+                        <span className="text-text-secondary text-sm">Uploaded</span>
                       </div>
                       <p className="text-lg font-semibold">{formatDate(file.uploaded_at)}</p>
                     </div>
 
                     {file.classification?.confidence && (
-                      <div className="glass-card p-4 rounded-xl">
+                      <div className="category-card p-4 rounded-xl">
                         <div className="flex items-center gap-3 mb-2">
                           <Tag size={18} className="text-accent-teal" />
-                          <span className="text-white/60 text-sm">Confidence</span>
+                          <span className="text-text-secondary text-sm">Confidence</span>
                         </div>
                         <p className="text-lg font-semibold">
                           {(file.classification.confidence * 100).toFixed(0)}%
@@ -657,10 +657,10 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                       </div>
                     )}
 
-                    <div className="glass-card p-4 rounded-xl">
+                    <div className="category-card p-4 rounded-xl">
                       <div className="flex items-center gap-3 mb-2">
                         <FileText size={18} className="text-accent-indigo" />
-                        <span className="text-white/60 text-sm">Type</span>
+                        <span className="text-text-secondary text-sm">Type</span>
                       </div>
                       <p className="text-lg font-semibold capitalize">{file.classification?.type || file.file_type || 'Unknown'}</p>
                     </div>
@@ -683,7 +683,7 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={onClose}
-                      className="px-6 py-3 bg-white/10 rounded-xl font-medium transition-all hover:bg-white/20"
+                      className="px-6 py-3 bg-primary-light rounded-xl font-medium transition-all hover:bg-white/20"
                     >
                       Close
                     </motion.button>
@@ -701,3 +701,5 @@ const PreviewModal = ({ file, files = [], onClose, onNavigate }) => {
 };
 
 export default PreviewModal;
+
+

@@ -18,7 +18,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { fetchSummary, fetchRecentFiles, fetchFiles, computeWeeklyActivity, normalizeWeeklyActivity } from '../../api';
 import PreviewModal from './PreviewModal';
 
-const COLORS = ['#7c3aed', '#06b6d4', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6'];
+const COLORS = ['#2563EB', '#3B82F6', '#60A5FA', '#10b981', '#F59E0B', '#8B5CF6'];
 
 // Extracted StatCard Component
 const StatCard = React.memo(({ stat, index }) => (
@@ -29,13 +29,13 @@ const StatCard = React.memo(({ stat, index }) => (
     className="stat-card"
   >
     <div className="flex items-start justify-between mb-4">
-      <div className={`p-3 rounded-xl bg-${stat.color}-500/20`}>
-        <stat.icon className={`text-${stat.color}-400`} size={24} />
+      <div className="p-3 rounded-lg bg-primary-light">
+        <stat.icon className="text-primary" size={24} />
       </div>
-      <span className="text-green-400 text-sm font-medium">{stat.change}</span>
+      <span className="text-green-500 text-sm font-medium">{stat.change}</span>
     </div>
-    <h3 className="text-white/60 text-sm mb-1">{stat.title}</h3>
-    <p className="text-3xl font-bold">{stat.value}</p>
+    <h3 className="text-text-secondary text-sm mb-1">{stat.title}</h3>
+    <p className="text-3xl font-bold text-text-primary">{stat.value}</p>
   </motion.div>
 ));
 StatCard.displayName = 'StatCard';
@@ -80,15 +80,15 @@ const FileCard = React.memo(({ file, index, formatSize, onSelect }) => {
       aria-label={`View ${file.filename}`}
     >
       <div className="flex items-start gap-3">
-        <div className="p-2 bg-accent-indigo/20 rounded-lg">
-          <Icon size={20} className="text-accent-indigo" />
+        <div className="p-2 bg-primary-light rounded-lg">
+          <Icon size={20} className="text-primary" />
         </div>
         <div className="flex-1 min-w-0">
           <h4 className="font-medium truncate">{file.filename || 'Unnamed'}</h4>
-          <p className="text-sm text-white/60 truncate">
+          <p className="text-sm text-gray-600 truncate">
             {file.classification?.category || 'Uncategorized'}
           </p>
-          <p className="text-xs text-white/40 mt-1">
+          <p className="text-xs text-gray-400 mt-1">
             {formatSize(file.size || 0)}
           </p>
         </div>
@@ -210,18 +210,18 @@ const Dashboard = () => {
       <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="glass-card rounded-2xl p-4 mb-6 flex items-center justify-between"
+        className="glass-card p-6 mb-6 flex items-center justify-between"
       >
         <div>
-            <h2 className="text-2xl font-bold">Welcome back!</h2>
-            <p className="text-white/60 text-sm mt-1">Here's what's happening with your files</p>
+          <h2 className="text-2xl font-bold">Welcome back!</h2>
+          <p className="text-text-secondary text-sm mt-1">Here's what's happening with your files</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="glass-card px-4 py-2">
+            <span className="text-sm text-text-secondary">Last sync: 2 min ago</span>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="glass-card px-4 py-2 rounded-xl">
-              <span className="text-sm text-white/80">Last sync: 2 min ago</span>
-            </div>
-          </div>
-        </motion.div>
+        </div>
+      </motion.div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
@@ -235,46 +235,46 @@ const Dashboard = () => {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.15 }}
-          className="glass-card p-6 rounded-2xl mb-6"
+          className="glass-card p-6 mb-6"
         >
           <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Link 
               to="/upload"
-              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+              className="glass-card-hover p-4 flex items-center gap-3 group"
             >
-              <div className="w-10 h-10 rounded-lg bg-accent-indigo/20 flex items-center justify-center group-hover:bg-accent-indigo/30 transition-colors">
-                <Upload size={20} className="text-accent-indigo" />
+              <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center transition-colors">
+                <Upload size={20} className="text-primary" />
               </div>
               <div>
                 <p className="font-semibold">Upload Files</p>
-                <p className="text-sm text-white/60">Add new files to your store</p>
+                <p className="text-sm text-text-secondary">Add new files to your store</p>
               </div>
             </Link>
             
             <Link 
               to="/files"
-              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+              className="glass-card-hover p-4 flex items-center gap-3 group"
             >
-              <div className="w-10 h-10 rounded-lg bg-accent-teal/20 flex items-center justify-center group-hover:bg-accent-teal/30 transition-colors">
-                <FileText size={20} className="text-accent-teal" />
+              <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center transition-colors">
+                <FileText size={20} className="text-primary" />
               </div>
               <div>
                 <p className="font-semibold">Browse Files</p>
-                <p className="text-sm text-white/60">View all uploaded files</p>
+                <p className="text-sm text-text-secondary">View all uploaded files</p>
               </div>
             </Link>
             
             <Link 
               to="/groups"
-              className="glass-card p-4 rounded-xl hover:bg-white/10 transition-all hover:scale-105 flex items-center gap-3 group"
+              className="glass-card-hover p-4 flex items-center gap-3 group"
             >
-              <div className="w-10 h-10 rounded-lg bg-accent-purple/20 flex items-center justify-center group-hover:bg-accent-purple/30 transition-colors">
-                <FolderOpen size={20} className="text-accent-purple" />
+              <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center transition-colors">
+                <FolderOpen size={20} className="text-primary" />
               </div>
               <div>
                 <p className="font-semibold">Explore Groups</p>
-                <p className="text-sm text-white/60">Browse by category & type</p>
+                <p className="text-sm text-text-secondary">Browse by category & type</p>
               </div>
             </Link>
           </div>
@@ -287,28 +287,30 @@ const Dashboard = () => {
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="glass-card p-6 rounded-2xl"
+            className="glass-card p-6"
           >
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <TrendingUp size={20} className="text-accent-teal" />
+              <TrendingUp size={20} className="text-primary" />
               Weekly Activity
             </h3>
-            <ResponsiveContainer width="100%" height={250}>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
               <BarChart data={activityData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff20" />
-                <XAxis dataKey="name" stroke="#ffffff60" />
-                <YAxis stroke="#ffffff60" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                <XAxis dataKey="name" stroke="#94A3B8" />
+                <YAxis stroke="#94A3B8" />
                 <Tooltip
                   contentStyle={{
-                    background: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: '#FFFFFF',
+                    border: '1px solid #E2E8F0',
                     borderRadius: '12px',
-                    backdropFilter: 'blur(10px)'
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                   }}
                 />
-                <Bar dataKey="uploads" fill="#7c3aed" radius={[8, 8, 0, 0]} />
+                <Bar dataKey="uploads" fill="#2563EB" radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
+            </div>
           </motion.div>
 
           {/* Type Distribution */}
@@ -316,13 +318,14 @@ const Dashboard = () => {
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="glass-card p-6 rounded-2xl"
+            className="glass-card p-6"
           >
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Database size={20} className="text-accent-indigo" />
+              <Database size={20} className="text-primary" />
               File Types
             </h3>
-            <ResponsiveContainer width="100%" height={250}>
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={typeDistribution}
@@ -340,13 +343,15 @@ const Dashboard = () => {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    background: 'rgba(15, 23, 42, 0.9)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '12px'
+                    background: '#FFFFFF',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '12px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                   }}
                 />
               </PieChart>
             </ResponsiveContainer>
+            </div>
           </motion.div>
         </div>
 
@@ -355,22 +360,22 @@ const Dashboard = () => {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.4 }}
-          className="glass-card p-6 rounded-2xl"
+          className="glass-card p-6"
         >
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Clock size={20} className="text-accent-teal" />
+            <Clock size={20} className="text-primary" />
             Recent Uploads
           </h3>
 
           {loading ? (
-            <div className="text-center py-8 text-white/60">Loading...</div>
+            <div className="text-center py-8 text-text-secondary">Loading...</div>
           ) : recentFiles.length === 0 ? (
             <div className="text-center py-8">
-              <FolderOpen size={48} className="mx-auto text-white/30 mb-3" />
-              <p className="text-white/60">No files yet. Upload your first file!</p>
+              <FolderOpen size={48} className="mx-auto text-text-muted mb-3" />
+              <p className="text-text-secondary">No files yet. Upload your first file!</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {recentFiles.map((file, index) => (
                 <FileCard
                   key={file.id || index}

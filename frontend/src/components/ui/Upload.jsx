@@ -141,7 +141,7 @@ const Upload = () => {
         className="mb-6"
       >
         <h1 className="text-3xl font-bold mb-2">Upload Files</h1>
-        <p className="text-white/60">Upload and classify your files with advanced analytics</p>
+        <p className="text-text-secondary">Upload and classify your files with advanced analytics</p>
       </motion.div>
 
       {uploadResults.length === 0 ? (
@@ -155,7 +155,7 @@ const Upload = () => {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`glass-card p-12 rounded-2xl mb-6 transition-all duration-300 ${
+            className={`category-card p-12 rounded-2xl mb-6 transition-all duration-300 ${
               isDragging ? 'border-2 border-accent-indigo bg-accent-indigo/10 scale-105' : 'border-2 border-dashed border-white/20'
             }`}
           >
@@ -173,13 +173,13 @@ const Upload = () => {
                 animate={isDragging ? { scale: 1.2, rotate: 10 } : { scale: 1, rotate: 0 }}
                 className="inline-block mb-4"
               >
-                <UploadIcon size={64} className={isDragging ? 'text-accent-indigo' : 'text-white/40'} />
+                <UploadIcon size={64} className={isDragging ? 'text-accent-indigo' : 'text-text-muted'} />
               </motion.div>
 
               <h3 className="text-xl font-semibold mb-2">
                 {isDragging ? 'Drop files here' : 'Drag & drop files here'}
               </h3>
-              <p className="text-white/60 mb-6">or</p>
+              <p className="text-text-secondary mb-6">or</p>
               
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -191,7 +191,7 @@ const Upload = () => {
                 Browse Files
               </motion.button>
 
-              <p className="text-white/40 text-sm mt-4">
+              <p className="text-text-muted text-sm mt-4">
                 Supports images, PDFs, JSON, videos, audio, and text files
               </p>
             </div>
@@ -202,7 +202,7 @@ const Upload = () => {
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
-              className="glass-card p-6 rounded-2xl mb-6"
+              className="category-card p-6 rounded-2xl mb-6"
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">
@@ -210,7 +210,7 @@ const Upload = () => {
                 </h3>
                 <button
                   onClick={handleReset}
-                  className="text-white/60 hover:text-white transition-colors text-sm"
+                  className="text-text-secondary hover:text-white transition-colors text-sm"
                 >
                   Clear All
                 </button>
@@ -227,7 +227,7 @@ const Upload = () => {
                       initial={{ x: -20, opacity: 0 }}
                       animate={{ x: 0, opacity: 1 }}
                       transition={{ delay: index * 0.05 }}
-                      className="flex items-center gap-3 p-3 bg-white/5 rounded-xl"
+                      className="flex items-center gap-3 p-3 bg-surface rounded-xl"
                     >
                       <div className="p-2 bg-accent-teal/20 rounded-lg">
                         <FileIcon size={20} className="text-accent-teal" />
@@ -235,11 +235,11 @@ const Upload = () => {
                       
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{fileItem.name}</p>
-                        <p className="text-sm text-white/60">{formatSize(fileItem.size)}</p>
+                        <p className="text-sm text-text-secondary">{formatSize(fileItem.size)}</p>
                         
                         {isUploading && (
                           <div className="mt-2">
-                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-1.5 bg-primary-light rounded-full overflow-hidden">
                               <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: `${progress}%` }}
@@ -254,10 +254,10 @@ const Upload = () => {
                       {!isUploading && (
                         <button
                           onClick={() => removeFile(fileItem.id)}
-                          className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                          className="p-2 hover:bg-primary-light rounded-lg transition-colors"
                           aria-label="Remove file"
                         >
-                          <X size={18} className="text-white/60" />
+                          <X size={18} className="text-text-secondary" />
                         </button>
                       )}
                     </motion.div>
@@ -292,14 +292,14 @@ const Upload = () => {
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="glass-card p-8 rounded-2xl"
+          className="category-card p-8 rounded-2xl"
         >
           <div className="text-center mb-6">
             {failCount === 0 ? (
               <>
                 <CheckCircle size={64} className="mx-auto text-green-400 mb-4" />
                 <h2 className="text-2xl font-bold mb-2">Upload Successful!</h2>
-                <p className="text-white/60">
+                <p className="text-text-secondary">
                   {successCount} file{successCount !== 1 ? 's' : ''} uploaded and classified
                 </p>
               </>
@@ -307,7 +307,7 @@ const Upload = () => {
               <>
                 <AlertCircle size={64} className="mx-auto text-amber-400 mb-4" />
                 <h2 className="text-2xl font-bold mb-2">Upload Complete</h2>
-                <p className="text-white/60">
+                <p className="text-text-secondary">
                   {successCount} succeeded, {failCount} failed
                 </p>
               </>
@@ -375,3 +375,4 @@ const Upload = () => {
 };
 
 export default Upload;
+

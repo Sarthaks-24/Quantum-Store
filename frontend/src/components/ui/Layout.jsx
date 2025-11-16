@@ -14,18 +14,18 @@ const Layout = ({ children }) => {
   ];
 
   return (
-    <div className="min-h-screen flex bg-gradient-dark">
+    <div className="min-h-screen flex bg-surface">
       {/* Sidebar */}
       <motion.aside
         initial={{ x: -300, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
-        className="w-64 p-6 glass-card m-4 rounded-3xl"
+        className="w-64 p-6 bg-card-bg border-r border-border-color"
       >
         <div className="mb-8">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-accent-indigo to-accent-teal bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold text-primary">
             QuantumStore
           </h1>
-          <p className="text-sm text-white/60 mt-1">File Intelligence</p>
+          <p className="text-sm text-text-secondary mt-1">File Intelligence</p>
         </div>
 
         <nav className="space-y-2">

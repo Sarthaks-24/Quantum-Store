@@ -286,13 +286,13 @@ const GroupsExplorer = () => {
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
-            <div className="h-10 w-64 bg-white/10 rounded-xl animate-pulse mb-2" />
-            <div className="h-6 w-96 bg-white/5 rounded-lg animate-pulse" />
+            <div className="h-10 w-64 bg-surface rounded-lg animate-pulse mb-2" />
+            <div className="h-6 w-96 bg-surface rounded-lg animate-pulse" />
           </div>
           
           <div className="space-y-4">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-24 bg-white/5 rounded-2xl animate-pulse" />
+              <div key={i} className="h-24 bg-white border border-border-color rounded-xl animate-pulse" />
             ))}
           </div>
         </div>
@@ -305,14 +305,14 @@ const GroupsExplorer = () => {
     return (
       <main className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-7xl mx-auto">
-          <div className="glass-card p-8 text-center">
+          <div className="category-card p-8 text-center">
             <div className="text-red-400 mb-4">
               <svg className="w-16 h-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-xl font-bold text-white/90 mb-2">Failed to Load Categories</h3>
-            <p className="text-white/60 mb-6">{error}</p>
+            <h3 className="text-xl font-bold text-text-primary mb-2">Failed to Load Categories</h3>
+            <p className="text-text-secondary mb-6">{error}</p>
             <button
               onClick={loadData}
               className="btn-primary inline-flex items-center gap-2"
@@ -338,7 +338,7 @@ const GroupsExplorer = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold">File Categories</h1>
-              <p className="text-white/60 text-sm mt-1">
+              <p className="text-text-secondary text-sm mt-1">
                 Browse {groups.reduce((sum, g) => sum + g.count, 0)} files organized by type and category
               </p>
             </div>
@@ -354,18 +354,18 @@ const GroupsExplorer = () => {
 
           {/* Search Bar */}
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={20} />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted" size={20} />
             <input
               type="text"
               placeholder="Search categories, subcategories, or files..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-12 py-4 bg-white/5 border border-white/10 rounded-2xl text-white/90 placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-accent-indigo/50 focus:border-accent-indigo/50 transition-all"
+              className="w-full pl-12 pr-12 py-3 bg-surface border border-border-color rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
                 aria-label="Clear search"
               >
                 ✕
@@ -377,13 +377,13 @@ const GroupsExplorer = () => {
           <div className="flex gap-2 mt-4">
             <button
               onClick={handleExpandAll}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-white/70 transition-colors"
+              className="px-4 py-2 bg-card-bg border border-border-color hover:border-primary rounded-lg text-sm text-text-primary transition-all"
             >
               Expand All
             </button>
             <button
               onClick={handleCollapseAll}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-sm text-white/70 transition-colors"
+              className="px-4 py-2 bg-card-bg border border-border-color hover:border-primary rounded-lg text-sm text-text-primary transition-all"
             >
               Collapse All
             </button>
@@ -413,12 +413,12 @@ const GroupsExplorer = () => {
             ))}
           </motion.div>
         ) : (
-          <div className="glass-card p-12 text-center">
-            <FolderOpen size={64} className="mx-auto text-white/20 mb-4" />
-            <h3 className="text-xl font-bold text-white/60 mb-2">
+          <div className="category-card p-12 text-center">
+            <FolderOpen size={64} className="mx-auto text-text-muted mb-4" />
+            <h3 className="text-xl font-bold text-text-primary mb-2">
               {searchTerm ? 'No Matches Found' : 'No Categories Yet'}
             </h3>
-            <p className="text-white/40 mb-6">
+            <p className="text-text-secondary mb-6">
               {searchTerm 
                 ? 'Try adjusting your search terms'
                 : 'Categories are automatically created when files are analyzed. Click the button below to organize your files.'
@@ -469,12 +469,12 @@ const GroupItem = ({
       initial={{ y: 20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ delay: index * 0.05 }}
-      className="glass-card rounded-2xl overflow-hidden"
+      className="category-card"
     >
       {/* Group Header */}
       <button
         onClick={onToggle}
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/5 transition-colors"
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-surface/50 rounded-lg transition-colors"
         aria-expanded={isExpanded}
         aria-controls={`group-${group.id}-content`}
       >
@@ -483,17 +483,17 @@ const GroupItem = ({
             animate={{ rotate: isExpanded ? 90 : 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ChevronRight size={20} className="text-white/60" />
+            <ChevronRight size={20} className="text-text-secondary" />
           </motion.div>
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent-indigo/20 to-accent-purple/20 flex items-center justify-center">
-            <Icon size={20} className="text-accent-indigo" />
+          <div className="w-10 h-10 rounded-lg bg-primary-light flex items-center justify-center">
+            <Icon size={20} className="text-primary" />
           </div>
           <div className="text-left">
-            <h3 className="font-semibold text-white/90">{group.name}</h3>
-            <p className="text-sm text-white/50">{group.subgroups.length} subcategories</p>
+            <h3 className="font-semibold text-text-primary">{group.name}</h3>
+            <p className="text-sm text-text-secondary">{group.subgroups.length} subcategories</p>
           </div>
         </div>
-        <div className="px-3 py-1 rounded-full bg-white/10 text-sm font-medium">
+        <div className="px-3 py-1 rounded-full bg-primary-light text-sm font-medium text-primary">
           {group.count}
         </div>
       </button>
@@ -507,7 +507,7 @@ const GroupItem = ({
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="border-t border-white/10"
+            className="border-t border-border-color"
           >
             <div className="p-2">
               {group.subgroups.map((subgroup) => (
@@ -545,7 +545,7 @@ const SubgroupItem = ({
       {/* Subgroup Header */}
       <button
         onClick={onToggle}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-white/5 rounded-xl transition-colors"
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-surface/50 rounded-lg transition-colors"
         aria-expanded={isExpanded}
         aria-controls={`subgroup-${subgroup.id}-content`}
       >
@@ -554,14 +554,14 @@ const SubgroupItem = ({
             animate={{ rotate: isExpanded ? 90 : 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ChevronRight size={16} className="text-white/40" />
+            <ChevronRight size={16} className="text-text-muted" />
           </motion.div>
-          <File size={16} className="text-white/40" />
-          <span className="text-sm font-medium text-white/80">{subgroup.name}</span>
+          <File size={16} className="text-text-muted" />
+          <span className="text-sm font-medium text-text-primary">{subgroup.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          {isLoading && <Loader size={14} className="animate-spin text-white/40" />}
-          <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+          {isLoading && <Loader size={14} className="animate-spin text-text-muted" />}
+          <span className="text-xs px-2 py-0.5 rounded-full bg-primary-light text-primary">
             {subgroup.count}
           </span>
         </div>
@@ -581,7 +581,7 @@ const SubgroupItem = ({
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => (
-                  <div key={i} className="h-16 bg-white/5 rounded-lg animate-pulse" />
+                  <div key={i} className="h-16 bg-surface rounded-lg animate-pulse" />
                 ))}
               </div>
             ) : subgroup.items && subgroup.items.length > 0 ? (
@@ -596,7 +596,7 @@ const SubgroupItem = ({
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-white/40 py-4 pl-4">No files in this subcategory</p>
+              <p className="text-sm text-text-secondary py-4 pl-4">No files in this subcategory</p>
             )}
           </motion.div>
         )}
@@ -615,14 +615,14 @@ const FileItem = ({ file, onSelect, index }) => {
       animate={{ x: 0, opacity: 1 }}
       transition={{ delay: index * 0.03 }}
       onClick={() => onSelect(file)}
-      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-white/5 rounded-lg transition-all group text-left"
+      className="w-full px-4 py-3 flex items-center gap-3 hover:bg-surface/50 rounded-lg transition-all group text-left border-l-2 border-transparent hover:border-primary"
     >
-      <File size={16} className="text-white/40 group-hover:text-accent-indigo transition-colors flex-shrink-0" />
+      <File size={16} className="text-text-muted group-hover:text-primary transition-colors flex-shrink-0" />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white/80 truncate group-hover:text-white transition-colors">
+        <p className="text-sm font-medium text-text-primary truncate">
           {file.filename}
         </p>
-        <p className="text-xs text-white/40 mt-0.5">
+        <p className="text-xs text-text-secondary mt-0.5">
           {file.size_human} • {file.type || 'Unknown type'}
         </p>
       </div>
@@ -631,3 +631,4 @@ const FileItem = ({ file, onSelect, index }) => {
 };
 
 export default GroupsExplorer;
+
